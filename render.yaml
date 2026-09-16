@@ -1,0 +1,50 @@
+services:
+  # Zerix Main Web Application
+  - type: web
+    name: zerix-platform
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: BUSINESS_NAME
+        value: Zerix
+      - key: GOOGLE_REVIEW_URL
+        value: https://g.page/r/YOUR_REVIEW_LINK/review
+      - key: FOLLOW_UP_DAYS
+        value: 3
+      - key: OPENWA_API_URL
+        fromService:
+          type: web
+          name: zerix-whatsapp-gateway
+          property: host
+      - key: OPENWA_SESSION_ID
+        value: default
+    disk:
+      name: zerix-data
+      mountPath: /app/data
+      sizeGB: 1
+
+  # Zerix WhatsApp Self-Hosted Gateway
+  - type: web
+    name: zerix-whatsapp-gateway
+    env: docker
+    dockerfilePath: ./Dockerfile.openwa
+    plan: starter
+    envVars:
+      - key: PORT
+        value: 2785
+      - key: AUTO_START_SESSIONS
+        value: true
+      - key: DATABASE_TYPE
+        value: sqlite
+      - key: DATABASE_NAME
+        value: /app/data/openwa.sqlite
+      - key: PUPPETEER_HEADLESS
+        value: true
+    disk:
+      name: openwa-data
+      mountPath: /app/data
+      sizeGB: 2

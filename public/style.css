@@ -1,0 +1,69 @@
+/* Custom styles for Zerix Platform Dashboard */
+
+.active-tab {
+  background-color: rgb(30 41 59);
+  color: rgb(241 245 249);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  border: 1px solid rgb(51 65 85);
+}
+
+.inactive-tab {
+  color: rgb(148 163 184);
+  border: 1px solid transparent;
+}
+
+.inactive-tab:hover {
+  color: rgb(226 232 240);
+  background-color: rgb(15 23 42 / 0.6);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(15 23 42);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(51 65 85);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(71 85 105);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tab-view:not(.hidden) {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Toast animations */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toast {
+  animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

@@ -1,0 +1,49 @@
+services:
+  # Zerix Platform Web App & API
+  zerix_app:
+    build: .
+    container_name: zerix_app
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - GOOGLE_REVIEW_URL=https://g.page/r/zerix/review
+      - BUSINESS_NAME=Zerix
+      - FOLLOW_UP_DAYS=3
+      - OPENWA_API_URL=http://zerix_gateway:2785
+      - OPENWA_API_KEY=your-zerix-gateway-api-key
+      - OPENWA_SESSION_ID=default
+      # - SMTP_HOST=smtp.gmail.com
+      # - SMTP_PORT=587
+      # - SMTP_USER=your-email@gmail.com
+      # - SMTP_PASS=your-app-password
+      # - SMTP_FROM=reviews@zerix.app
+    volumes:
+      - zerix_data:/app/data
+    depends_on:
+      - zerix_gateway
+
+  # Zerix WhatsApp Self-Hosted Gateway Engine
+  zerix_gateway:
+    image: rmyndharis/openwa:latest
+    container_name: zerix_gateway
+    restart: unless-stopped
+    ports:
+      - "2886:2886"
+      - "2785:2785"
+    environment:
+      - PORT=2785
+      - NODE_ENV=production
+      - AUTO_START_SESSIONS=true
+      - DATABASE_TYPE=sqlite
+      - DATABASE_NAME=/app/data/openwa.sqlite
+      - SESSION_DATA_PATH=/app/data/sessions
+      - STORAGE_LOCAL_PATH=/app/data/media
+      - PUPPETEER_HEADLESS=true
+    volumes:
+      - openwa_data:/app/data
+
+volumes:
+  zerix_data:
+  openwa_data:

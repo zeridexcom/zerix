@@ -1,19 +1,19 @@
 {
-  "name": "@hand-on-web/review-request-automator",
+  "name": "zerix",
   "version": "1.0.0",
-  "description": "Automatically ask customers for Google reviews after service completion",
+  "description": "Zerix — Automated Review Collection & Direct WhatsApp Gateway Platform",
   "main": "server.js",
-  "homepage": "https://www.handonweb.com",
+  "homepage": "https://zerix.app",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"
   },
-  "keywords": ["google-reviews", "automation", "customer-feedback", "local-business"],
-  "author": "Hand On Web Ltd <outreach@handonweb.com>",
+  "keywords": ["zerix", "google-reviews", "automation", "whatsapp-gateway", "customer-feedback"],
+  "author": "Zerix Team <support@zerix.app>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Hand-On-Web-Ltd/review-request-automator.git"
+    "url": "https://github.com/zerix/zerix.git"
   },
   "dependencies": {
     "dotenv": "^16.3.0",

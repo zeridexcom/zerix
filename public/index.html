@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-900 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zerix — Automated Review Collection & WhatsApp Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="h-full flex flex-col font-['Inter',sans-serif] bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 max-w-md w-full pointer-events-none"></div>
+
+  <!-- Main Navigation Header -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        
+        <!-- Left: Logo & Status -->
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
+            <i class="fa-solid fa-bolt text-white text-lg"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="font-bold text-slate-100 text-lg tracking-tight">Zerix</h1>
+              <span class="text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full">v1.0.0</span>
+            </div>
+            <p class="text-xs text-slate-400 hidden sm:block">Automated Review Collection & Direct WhatsApp Gateway</p>
+          </div>
+        </div>
+
+        <!-- Center: Server Health Status Badge -->
+        <div class="hidden md:flex items-center gap-3 bg-slate-800/60 border border-slate-700/60 rounded-full px-3 py-1.5 text-xs">
+          <span class="flex h-2.5 w-2.5 relative">
+            <span id="server-pulse" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span id="server-dot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+          </span>
+          <span id="server-status-text" class="font-medium text-slate-300">Server Online</span>
+          <span class="text-slate-600">|</span>
+          <span class="text-slate-400 font-mono" id="server-port-badge">Port: ...</span>
+          <span class="text-slate-600">|</span>
+          <span class="text-slate-400 font-mono" id="server-uptime-badge">Up: 0s</span>
+        </div>
+
+        <!-- Right: Actions -->
+        <div class="flex items-center gap-2 sm:gap-3">
+          <button id="seed-btn" onclick="seedSampleData()" title="Load demo data for quick testing" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition">
+            <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+            <span>Load Demo Data</span>
+          </button>
+          
+          <button onclick="triggerFollowUps()" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-300 bg-purple-950/50 hover:bg-purple-900/60 border border-purple-800/50 rounded-lg transition">
+            <i class="fa-solid fa-bell text-purple-400"></i>
+            <span class="hidden sm:inline">Run Follow-ups</span>
+            <span id="due-badge" class="bg-purple-600 text-white font-bold text-[10px] px-1.5 py-0.2 rounded-full">0</span>
+          </button>
+
+          <button onclick="switchTab('send')" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95 shadow-md shadow-indigo-600/30 rounded-lg transition">
+            <i class="fa-solid fa-plus"></i>
+            <span>New Request</span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="flex space-x-1 border-t border-slate-800/80 -mb-px overflow-x-auto py-1">
+        <button onclick="switchTab('dashboard')" id="tab-dashboard" class="nav-tab active-tab flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg transition">
+          <i class="fa-solid fa-chart-line text-sm"></i>
+          <span>Dashboard</span>
+        </button>
+        <button onclick="switchTab('send')" id="tab-send" class="nav-tab inactive-tab flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg transition">
+          <i class="fa-solid fa-paper-plane text-sm"></i>
+          <span>Send Request</span>
+        </button>
+        <button onclick="switchTab('followups')" id="tab-followups" class="nav-tab inactive-tab flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg transition">
+          <i class="fa-solid fa-clock-rotate-left text-sm"></i>
+          <span>Follow-up Hub</span>
+        </button>
+        <button onclick="switchTab('templates')" id="tab-templates" class="nav-tab inactive-tab flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg transition">
+          <i class="fa-solid fa-file-code text-sm"></i>
+          <span>Template Studio</span>
+        </button>
+        <button onclick="switchTab('config')" id="tab-config" class="nav-tab inactive-tab flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg transition">
+          <i class="fa-solid fa-sliders text-sm"></i>
+          <span>Server & Settings</span>
+        </button>
+        <button onclick="switchTab('api')" id="tab-api" class="nav-tab inactive-tab flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg transition">
+          <i class="fa-solid fa-code text-sm"></i>
+          <span>API & Integrations</span>
+        </button>
+      </nav>
+
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 1: DASHBOARD & REQUESTS -->
+    <!-- ========================================================================= -->
+    <section id="view-dashboard" class="tab-view space-y-6">
+      
+      <!-- Metrics Overview Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+        
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-slate-400">Total Requests</span>
+            <div class="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+              <i class="fa-solid fa-inbox text-xs"></i>
+            </div>
+          </div>
+          <p id="stat-total" class="text-2xl font-bold text-slate-100 mt-2">0</p>
+          <p class="text-[11px] text-slate-500 mt-1">All recorded events</p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-slate-400">Sent Success</span>
+            <div class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+              <i class="fa-solid fa-check text-xs"></i>
+            </div>
+          </div>
+          <p id="stat-sent" class="text-2xl font-bold text-emerald-400 mt-2">0</p>
+          <p class="text-[11px] text-slate-500 mt-1">Dispatched to customers</p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-slate-400">Queued / Ready</span>
+            <div class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+              <i class="fa-solid fa-hourglass-half text-xs"></i>
+            </div>
+          </div>
+          <p id="stat-queued" class="text-2xl font-bold text-amber-400 mt-2">0</p>
+          <p class="text-[11px] text-slate-500 mt-1">Awaiting dispatch</p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-slate-400">Failed / Errors</span>
+            <div class="w-7 h-7 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center">
+              <i class="fa-solid fa-triangle-exclamation text-xs"></i>
+            </div>
+          </div>
+          <p id="stat-failed" class="text-2xl font-bold text-rose-400 mt-2">0</p>
+          <p class="text-[11px] text-slate-500 mt-1">Needs attention</p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-slate-400">Follow-ups Due</span>
+            <div class="w-7 h-7 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center">
+              <i class="fa-solid fa-bell text-xs"></i>
+            </div>
+          </div>
+          <p id="stat-due" class="text-2xl font-bold text-purple-400 mt-2">0</p>
+          <p class="text-[11px] text-slate-500 mt-1">Past follow-up window</p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-slate-400">Follow-ups Sent</span>
+            <div class="w-7 h-7 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center">
+              <i class="fa-solid fa-paper-plane text-xs"></i>
+            </div>
+          </div>
+          <p id="stat-followup-sent" class="text-2xl font-bold text-cyan-400 mt-2">0</p>
+          <p class="text-[11px] text-slate-500 mt-1">Reminders delivered</p>
+        </div>
+
+      </div>
+
+      <!-- Quick Server Info Banner -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center text-slate-300">
+            <i class="fa-solid fa-building text-base text-indigo-400"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-sm font-semibold text-slate-200" id="banner-biz-name">Loading...</span>
+              <span id="banner-wa-pill" class="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">WhatsApp: Checking...</span>
+              <span id="banner-smtp-pill" class="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">Checking SMTP...</span>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+              <span>Google Review Target:</span>
+              <a id="banner-review-url" href="#" target="_blank" class="text-indigo-400 hover:text-indigo-300 font-mono truncate max-w-xs inline-block">https://...</a>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 w-full md:w-auto justify-end">
+          <button onclick="testGoogleReviewUrl()" class="px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition flex items-center gap-1.5">
+            <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+            <span>Test Review Link</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Requests Table Section -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+        
+        <!-- Table Toolbar -->
+        <div class="p-4 border-b border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-900/40">
+          <div class="flex items-center gap-2">
+            <h2 class="font-semibold text-slate-200 text-sm flex items-center gap-2">
+              <span>Review Requests</span>
+              <span id="table-count-badge" class="text-xs bg-slate-800 text-slate-400 font-mono px-2 py-0.5 rounded-full">0 items</span>
+            </h2>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            
+            <!-- Search Input -->
+            <div class="relative flex-1 sm:w-60">
+              <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-xs"></i>
+              <input type="text" id="filter-search" oninput="applyFilters()" placeholder="Search customer, email, job..." class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+            </div>
+
+            <!-- Status Filter -->
+            <select id="filter-status" onchange="applyFilters()" class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500">
+              <option value="all">All Statuses</option>
+              <option value="sent">Sent</option>
+              <option value="queued">Queued</option>
+              <option value="pending">Pending</option>
+              <option value="failed">Failed</option>
+            </select>
+
+            <!-- Channel Filter -->
+            <select id="filter-channel" onchange="applyFilters()" class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500">
+              <option value="all">All Channels</option>
+              <option value="email">Email</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="sms">SMS</option>
+            </select>
+
+            <!-- Auto-refresh Toggle & Manual Refresh -->
+            <button onclick="fetchData(true)" title="Refresh data" class="p-1.5 text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition">
+              <i id="refresh-icon" class="fa-solid fa-rotate text-xs"></i>
+            </button>
+
+          </div>
+        </div>
+
+        <!-- Table Element -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-950/60 text-slate-400 font-medium uppercase tracking-wider text-[11px] border-b border-slate-800">
+              <tr>
+                <th scope="col" class="px-4 py-3">Customer</th>
+                <th scope="col" class="px-4 py-3">Channel & Destination</th>
+                <th scope="col" class="px-4 py-3">Job Reference</th>
+                <th scope="col" class="px-4 py-3">Status</th>
+                <th scope="col" class="px-4 py-3">Follow-up</th>
+                <th scope="col" class="px-4 py-3">Created</th>
+                <th scope="col" class="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="requests-table-body" class="divide-y divide-slate-800/60">
+              <!-- Rendered via JavaScript -->
+              <tr>
+                <td colspan="7" class="px-4 py-12 text-center text-slate-500">
+                  <i class="fa-solid fa-circle-notch animate-spin text-indigo-500 text-lg mb-2"></i>
+                  <p>Loading requests...</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Table Footer / Empty helper -->
+        <div id="table-empty-state" class="hidden p-8 text-center bg-slate-950/20">
+          <div class="w-12 h-12 mx-auto rounded-full bg-slate-800 text-slate-500 flex items-center justify-center mb-3">
+            <i class="fa-solid fa-inbox text-lg"></i>
+          </div>
+          <h3 class="text-sm font-semibold text-slate-300">No review requests found</h3>
+          <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">No requests match your current filters or no requests have been created yet.</p>
+          <div class="mt-4 flex items-center justify-center gap-3">
+            <button onclick="seedSampleData()" class="px-3 py-1.5 text-xs font-medium text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-lg transition">
+              <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Populate Demo Records
+            </button>
+            <button onclick="switchTab('send')" class="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition">
+              <i class="fa-solid fa-plus mr-1"></i> Send First Request
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 2: SEND REVIEW REQUEST -->
+    <!-- ========================================================================= -->
+    <section id="view-send" class="tab-view hidden space-y-6">
+      
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Column: Form -->
+        <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
+          <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div>
+              <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                <i class="fa-solid fa-paper-plane text-indigo-400"></i>
+                <span>Send Review Request</span>
+              </h2>
+              <p class="text-xs text-slate-400 mt-0.5">Dispatches a review invite immediately or queues it</p>
+            </div>
+            <button type="button" onclick="fillSampleForm()" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-1 rounded-lg border border-indigo-500/30 transition">
+              <i class="fa-solid fa-bolt mr-1"></i> Fill Sample
+            </button>
+          </div>
+
+          <form id="send-request-form" onsubmit="submitRequest(event)" class="mt-5 space-y-4">
+            
+            <!-- Customer Name -->
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1" for="req-name">Customer Name <span class="text-rose-400">*</span></label>
+              <input type="text" id="req-name" required placeholder="e.g. Alex Morgan" oninput="updateLivePreview()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+            </div>
+
+            <!-- Channel Selection -->
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1.5">Delivery Channel <span class="text-rose-400">*</span></label>
+              <div class="grid grid-cols-3 gap-2 sm:gap-3">
+                <label id="card-channel-email" class="channel-card flex items-center gap-2.5 p-3 bg-slate-950 border border-indigo-500 rounded-lg cursor-pointer hover:bg-slate-800/50 transition">
+                  <input type="radio" name="req-channel" value="email" checked onchange="handleChannelChange()" class="text-indigo-600 focus:ring-indigo-500 h-4 w-4 bg-slate-900 border-slate-700">
+                  <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-envelope text-indigo-400 text-sm"></i>
+                    <div>
+                      <div class="text-xs font-semibold text-slate-200">Email</div>
+                      <div class="text-[10px] text-slate-500">HTML</div>
+                    </div>
+                  </div>
+                </label>
+
+                <label id="card-channel-whatsapp" class="channel-card flex items-center gap-2.5 p-3 bg-slate-950 border border-slate-800 rounded-lg cursor-pointer hover:bg-slate-800/50 transition">
+                  <input type="radio" name="req-channel" value="whatsapp" onchange="handleChannelChange()" class="text-emerald-500 focus:ring-emerald-500 h-4 w-4 bg-slate-900 border-slate-700">
+                  <div class="flex items-center gap-2">
+                    <i class="fa-brands fa-whatsapp text-emerald-400 text-base"></i>
+                    <div>
+                      <div class="text-xs font-semibold text-slate-200">WhatsApp</div>
+                      <div class="text-[10px] text-slate-500">Instant</div>
+                    </div>
+                  </div>
+                </label>
+
+                <label id="card-channel-sms" class="channel-card flex items-center gap-2.5 p-3 bg-slate-950 border border-slate-800 rounded-lg cursor-pointer hover:bg-slate-800/50 transition">
+                  <input type="radio" name="req-channel" value="sms" onchange="handleChannelChange()" class="text-cyan-500 focus:ring-cyan-500 h-4 w-4 bg-slate-900 border-slate-700">
+                  <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-comment-sms text-cyan-400 text-sm"></i>
+                    <div>
+                      <div class="text-xs font-semibold text-slate-200">SMS</div>
+                      <div class="text-[10px] text-slate-500">Text</div>
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Email Address Field -->
+            <div id="email-field-group">
+              <label class="block text-xs font-medium text-slate-300 mb-1" for="req-email">Customer Email <span class="text-rose-400" id="email-req-star">*</span></label>
+              <div class="relative">
+                <i class="fa-solid fa-envelope absolute left-3 top-3 text-slate-500 text-xs"></i>
+                <input type="email" id="req-email" placeholder="customer@example.com" class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+              </div>
+            </div>
+
+            <!-- Phone Number Field -->
+            <div id="phone-field-group">
+              <label class="block text-xs font-medium text-slate-300 mb-1" for="req-phone">Customer Phone Number <span class="text-slate-500 text-[11px]" id="phone-hint">(Required if WhatsApp or SMS)</span></label>
+              <div class="relative">
+                <i class="fa-solid fa-phone absolute left-3 top-3 text-slate-500 text-xs"></i>
+                <input type="tel" id="req-phone" placeholder="+44 7700 900000" oninput="updateLivePreview()" class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+              </div>
+            </div>
+
+            <!-- Job Reference -->
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1" for="req-job">Job Reference / Invoice ID <span class="text-slate-500 text-[11px]">(Optional)</span></label>
+              <div class="relative">
+                <i class="fa-solid fa-hashtag absolute left-3 top-3 text-slate-500 text-xs"></i>
+                <input type="text" id="req-job" placeholder="e.g. INV-8823 or JOB-Plumbing-44" class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+              </div>
+            </div>
+
+            <!-- Submit Button & Anti-spam Note -->
+            <div class="pt-3 border-t border-slate-800 flex flex-col gap-2">
+              <button type="submit" id="submit-btn" class="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] text-white font-semibold rounded-lg shadow-lg shadow-indigo-600/25 transition flex items-center justify-center gap-2">
+                <i class="fa-solid fa-paper-plane text-xs"></i>
+                <span>Send Review Request</span>
+              </button>
+              <p class="text-[11px] text-slate-500 text-center flex items-center justify-center gap-1">
+                <i class="fa-solid fa-shield-halved text-indigo-400"></i>
+                Protected: Requests for the same customer within 7 days are automatically throttled.
+              </p>
+            </div>
+
+          </form>
+        </div>
+
+        <!-- Right Column: Real-time Live Simulator -->
+        <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm flex flex-col">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <i class="fa-solid fa-eye text-indigo-400"></i>
+              <span>Live Customer Experience Preview</span>
+            </h3>
+            <span id="preview-channel-pill" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300">Email View</span>
+          </div>
+
+          <!-- Live Preview Container -->
+          <div class="flex-1 mt-4 flex flex-col justify-center">
+            
+            <!-- Email Mockup View -->
+            <div id="preview-email-box" class="bg-slate-950 border border-slate-800 rounded-xl p-5 shadow-inner">
+              <div class="border-b border-slate-800 pb-3 mb-4 text-xs text-slate-400 space-y-1 font-mono">
+                <div class="flex gap-2">
+                  <span class="text-slate-600">From:</span>
+                  <span id="preview-from-email" class="text-slate-300">reviews@handonweb.com</span>
+                </div>
+                <div class="flex gap-2">
+                  <span class="text-slate-600">Subject:</span>
+                  <span id="preview-subject" class="text-slate-200 font-sans font-medium">How was your experience, Alex Morgan?</span>
+                </div>
+              </div>
+
+              <!-- Rendered Email Body -->
+              <div id="preview-rendered-email" class="bg-white text-slate-900 rounded-lg p-6 shadow text-sm">
+                <!-- Injected via JS -->
+              </div>
+            </div>
+
+            <!-- WhatsApp Mockup View -->
+            <div id="preview-whatsapp-box" class="hidden flex flex-col items-center justify-center py-2">
+              <div class="w-80 bg-slate-900 border-4 border-slate-700 rounded-[2.5rem] p-3 shadow-2xl relative overflow-hidden">
+                <!-- Phone top bar -->
+                <div class="w-20 h-4 bg-slate-800 rounded-full mx-auto mb-2"></div>
+                
+                <!-- WhatsApp Chat Header -->
+                <div class="bg-emerald-800 text-white p-2.5 rounded-t-xl flex items-center gap-2.5 shadow">
+                  <div class="w-7 h-7 rounded-full bg-emerald-700 flex items-center justify-center font-bold text-xs">
+                    <i class="fa-solid fa-building text-[10px]"></i>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div id="wa-preview-header-biz" class="text-xs font-bold truncate">Your Business Name</div>
+                    <div class="text-[9px] text-emerald-200 flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Online
+                    </div>
+                  </div>
+                  <i class="fa-solid fa-phone text-xs text-emerald-200"></i>
+                </div>
+
+                <!-- Chat Background with WhatsApp chat bubble -->
+                <div class="bg-[#0b141a] p-3 space-y-2 min-h-[220px] flex flex-col justify-end">
+                  <div class="bg-[#005c4b] text-slate-100 p-3 rounded-xl rounded-tl-sm text-xs leading-relaxed shadow max-w-[95%]">
+                    <div id="preview-rendered-whatsapp" class="whitespace-pre-wrap font-sans">
+                      <!-- Injected via JS -->
+                    </div>
+                    <div class="text-[9px] text-emerald-300 text-right mt-1.5 flex items-center justify-end gap-1">
+                      <span>12:00 PM</span>
+                      <i class="fa-solid fa-check-double text-[10px] text-sky-400"></i>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="bg-slate-950 p-2 rounded-b-xl text-[10px] text-slate-500 text-center border-t border-slate-800">
+                  WhatsApp Business Chat
+                </div>
+
+                <!-- Bottom bar -->
+                <div class="w-24 h-1 bg-slate-700 rounded-full mx-auto mt-3 mb-1"></div>
+              </div>
+            </div>
+
+            <!-- SMS Mockup View -->
+            <div id="preview-sms-box" class="hidden flex-col items-center justify-center py-4">
+              <!-- Smartphone frame -->
+              <div class="w-72 bg-slate-950 border-4 border-slate-700 rounded-[2.5rem] p-3 shadow-2xl relative">
+                <!-- Speaker Notch -->
+                <div class="w-20 h-4 bg-slate-800 rounded-full mx-auto mb-3"></div>
+                
+                <div class="text-center text-[10px] text-slate-400 mb-3 font-medium">
+                  <div class="font-bold text-slate-200">Our Team (Automated)</div>
+                  <div>SMS / RCS Message</div>
+                </div>
+
+                <!-- Bubble -->
+                <div class="bg-indigo-600 text-white p-3 rounded-2xl rounded-bl-sm text-xs shadow-md leading-relaxed" id="preview-rendered-sms">
+                  <!-- Injected via JS -->
+                </div>
+
+                <div class="text-[9px] text-slate-500 text-right mt-1">Just now · Delivered</div>
+                <!-- Bottom bar -->
+                <div class="w-24 h-1 bg-slate-700 rounded-full mx-auto mt-6 mb-1"></div>
+              </div>
+            </div>
+
+              <!-- Smartphone frame -->
+              <div class="w-72 bg-slate-950 border-4 border-slate-700 rounded-[2.5rem] p-3 shadow-2xl relative">
+                <!-- Speaker Notch -->
+                <div class="w-20 h-4 bg-slate-800 rounded-full mx-auto mb-3"></div>
+                
+                <div class="text-center text-[10px] text-slate-400 mb-3 font-medium">
+                  <div class="font-bold text-slate-200">Our Team (Automated)</div>
+                  <div>SMS / RCS Message</div>
+                </div>
+
+                <!-- Bubble -->
+                <div class="bg-indigo-600 text-white p-3 rounded-2xl rounded-bl-sm text-xs shadow-md leading-relaxed" id="preview-rendered-sms">
+                  <!-- Injected via JS -->
+                </div>
+
+                <div class="text-[9px] text-slate-500 text-right mt-1">Just now · Delivered</div>
+                <!-- Bottom bar -->
+                <div class="w-24 h-1 bg-slate-700 rounded-full mx-auto mt-6 mb-1"></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 3: FOLLOW-UP AUTOMATION HUB -->
+    <!-- ========================================================================= -->
+    <section id="view-followups" class="tab-view hidden space-y-6">
+      
+      <!-- Follow-up Banner & Controls -->
+      <div class="bg-gradient-to-r from-purple-950/40 via-slate-900 to-indigo-950/40 border border-purple-800/40 rounded-xl p-6 relative overflow-hidden">
+        <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+          <div class="space-y-1.5 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="p-1.5 rounded-lg bg-purple-500/20 text-purple-400">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+              </span>
+              <h2 class="text-lg font-bold text-slate-100">Smart Follow-up Reminders & Custom Dispatch</h2>
+            </div>
+            <p class="text-xs text-slate-300 max-w-2xl leading-relaxed">
+              Select specific customers to follow up with on demand, or trigger an automated reminder cycle. Follow-ups are sent via their original channel (WhatsApp, Email, or SMS).
+            </p>
+          </div>
+
+          <!-- Quick Threshold & Dispatch Actions -->
+          <div class="flex flex-wrap items-center gap-2.5 w-full lg:w-auto justify-start lg:justify-end">
+            
+            <!-- Quick Threshold Switcher -->
+            <div class="flex items-center gap-2 bg-slate-950/80 border border-purple-800/50 rounded-lg px-3 py-1.5 text-xs">
+              <span class="text-slate-400 text-[11px] whitespace-nowrap">Threshold:</span>
+              <select id="followup-threshold-select" onchange="onFollowupThresholdChange()" class="bg-transparent text-purple-300 font-semibold focus:outline-none cursor-pointer">
+                <option value="0" class="bg-slate-900 text-slate-200">Instant (0+ days / All)</option>
+                <option value="1" class="bg-slate-900 text-slate-200">1 Day Elapsed</option>
+                <option value="2" class="bg-slate-900 text-slate-200">2 Days Elapsed</option>
+                <option value="3" class="bg-slate-900 text-slate-200" selected>3 Days (Default)</option>
+                <option value="5" class="bg-slate-900 text-slate-200">5 Days Elapsed</option>
+                <option value="7" class="bg-slate-900 text-slate-200">7 Days Elapsed</option>
+              </select>
+            </div>
+
+            <button onclick="triggerFollowUps()" id="trigger-followups-btn" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-semibold rounded-lg shadow-lg shadow-purple-600/30 transition flex items-center gap-2">
+              <i class="fa-solid fa-bell"></i>
+              <span>Run Auto-Follow-ups</span>
+            </button>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Batch Selection Sticky Action Bar (appears when items are checked) -->
+      <div id="followup-batch-bar" class="hidden bg-purple-950/80 border border-purple-700/60 backdrop-blur rounded-xl p-3.5 flex items-center justify-between shadow-xl animate-in fade-in slide-in-from-top-2">
+        <div class="flex items-center gap-3">
+          <span class="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse"></span>
+          <div class="text-xs font-semibold text-purple-100">
+            <span id="selected-followup-count" class="font-bold text-white text-sm">0</span> customers selected
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="deselectAllFollowups()" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-medium rounded-lg border border-slate-700 transition">
+            Clear Selection
+          </button>
+          <button onclick="openCustomFollowUpModalForSelected()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-purple-300 text-xs font-semibold rounded-lg border border-purple-500/40 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-pen-to-square text-xs"></i>
+            <span>Customize Message</span>
+          </button>
+          <button onclick="sendFollowUpsToSelected()" id="send-selected-btn" class="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-bold rounded-lg shadow transition flex items-center gap-1.5">
+            <i class="fa-solid fa-paper-plane text-xs"></i>
+            <span>Send Follow-up to Selected</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Follow-up Candidates Table -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+        
+        <!-- Table Toolbar -->
+        <div class="p-4 border-b border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-900/40">
+          <div class="flex items-center gap-2">
+            <h3 class="font-semibold text-slate-200 text-sm flex items-center gap-2">
+              <i class="fa-solid fa-list-check text-purple-400"></i>
+              <span>Follow-up Candidates</span>
+            </h3>
+            <span id="due-count-pill" class="text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2.5 py-0.5 rounded-full font-mono">0 matching</span>
+          </div>
+
+          <!-- Filters -->
+          <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            
+            <!-- Search -->
+            <div class="relative flex-1 sm:w-48">
+              <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-xs"></i>
+              <input type="text" id="followup-search" oninput="renderFollowUpsTable()" placeholder="Search candidate..." class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500 transition">
+            </div>
+
+            <!-- Scope Filter -->
+            <select id="followup-scope-filter" onchange="renderFollowUpsTable()" class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-purple-500">
+              <option value="eligible">Eligible Due (> Threshold)</option>
+              <option value="unsent">All Unsent Follow-ups (Any Age)</option>
+              <option value="all">All Active Requests</option>
+              <option value="sent">Already Followed Up</option>
+            </select>
+
+            <!-- Channel Filter -->
+            <select id="followup-channel-filter" onchange="renderFollowUpsTable()" class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-purple-500">
+              <option value="all">All Channels</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="email">Email</option>
+              <option value="sms">SMS</option>
+            </select>
+
+            <button onclick="selectAllFollowupsVisible()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-lg border border-slate-700 transition" title="Select all visible">
+              Select All
+            </button>
+
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-950/60 text-slate-400 font-medium uppercase tracking-wider text-[11px] border-b border-slate-800">
+              <tr>
+                <th class="px-4 py-3 w-10 text-center">
+                  <input type="checkbox" id="followup-select-all" onchange="toggleSelectAllFollowups(this.checked)" class="rounded bg-slate-900 border-slate-700 text-purple-600 focus:ring-purple-500 h-4 w-4">
+                </th>
+                <th class="px-4 py-3">Customer</th>
+                <th class="px-4 py-3">Channel & Destination</th>
+                <th class="px-4 py-3">Initial Sent Date</th>
+                <th class="px-4 py-3">Days Elapsed</th>
+                <th class="px-4 py-3">Follow-up Status</th>
+                <th class="px-4 py-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="followup-table-body" class="divide-y divide-slate-800/60">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 4: TEMPLATE STUDIO -->
+    <!-- ========================================================================= -->
+    <section id="view-templates" class="tab-view hidden space-y-6">
+      
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Column: Template Editor -->
+        <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm flex flex-col">
+          <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div>
+              <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                <i class="fa-solid fa-file-code text-indigo-400"></i>
+                <span>Message Template Studio</span>
+              </h2>
+              <p class="text-xs text-slate-400">Customize email and SMS copy</p>
+            </div>
+            
+            <!-- Template Selector Tabs -->
+            <div class="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800">
+              <button onclick="selectTemplateTab('email')" id="template-tab-email" class="px-3 py-1 text-xs font-semibold rounded-md bg-indigo-600 text-white transition">Email</button>
+              <button onclick="selectTemplateTab('whatsapp')" id="template-tab-whatsapp" class="px-3 py-1 text-xs font-medium rounded-md text-slate-400 hover:text-slate-200 transition">WhatsApp</button>
+              <button onclick="selectTemplateTab('sms')" id="template-tab-sms" class="px-3 py-1 text-xs font-medium rounded-md text-slate-400 hover:text-slate-200 transition">SMS</button>
+            </div>
+          </div>
+
+          <!-- Variable Tags Pill Helper -->
+          <div class="mt-4 p-3 bg-slate-950 border border-slate-800 rounded-lg">
+            <div class="text-[11px] font-semibold text-slate-400 mb-1.5">Click variable tag to copy:</div>
+            <div class="flex flex-wrap gap-1.5">
+              <button onclick="insertTag('{{customerName}}')" class="text-[10px] font-mono bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded transition">&#123;&#123;customerName&#125;&#125;</button>
+              <button onclick="insertTag('{{reviewUrl}}')" class="text-[10px] font-mono bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded transition">&#123;&#123;reviewUrl&#125;&#125;</button>
+              <button onclick="insertTag('{{businessName}}')" class="text-[10px] font-mono bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded transition">&#123;&#123;businessName&#125;&#125;</button>
+            </div>
+          </div>
+
+          <!-- Textarea Editor -->
+          <div class="mt-4 flex-1 flex flex-col">
+            <label id="template-editor-label" class="block text-xs font-medium text-slate-400 mb-1">templates/email-template.md</label>
+            <textarea id="template-editor-textarea" oninput="handleTemplateEditorInput()" rows="12" class="w-full flex-1 bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition leading-relaxed"></textarea>
+          </div>
+
+          <!-- Save Button -->
+          <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
+            <span id="template-save-status" class="text-xs text-slate-500">Unsaved changes will apply on save</span>
+            <button onclick="saveCurrentTemplate()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-lg shadow transition flex items-center gap-1.5">
+              <i class="fa-solid fa-floppy-disk text-xs"></i>
+              <span>Save Template</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Right Column: Side-by-Side Rendered Preview -->
+        <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm flex flex-col">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <i class="fa-solid fa-magnifying-glass-chart text-indigo-400"></i>
+              <span>Rendered Output Preview</span>
+            </h3>
+            <span class="text-[10px] text-slate-500 font-mono">Sample: John Doe</span>
+          </div>
+
+          <div class="flex-1 mt-4 flex flex-col justify-center">
+            
+            <div id="template-preview-container" class="bg-slate-950 border border-slate-800 rounded-xl p-5 shadow-inner">
+              <div id="template-rendered-output" class="bg-white text-slate-900 rounded-lg p-6 shadow text-sm">
+                <!-- Rendered template -->
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 5: SERVER & CONFIG EDITOR -->
+    <!-- ========================================================================= -->
+    <section id="view-config" class="tab-view hidden space-y-6">
+      
+      <form id="config-editor-form" onsubmit="saveServerConfig(event)" class="space-y-6">
+        
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          <!-- Left Column: Core Settings & WhatsApp (OpenWA) -->
+          <div class="lg:col-span-6 space-y-6">
+            
+            <!-- Card 1: General Business & Review Configuration -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm space-y-4">
+              <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <div>
+                  <h2 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-indigo-400"></i>
+                    <span>General Business & Review Settings</span>
+                  </h2>
+                  <p class="text-xs text-slate-400 mt-0.5">Customize your brand name and target Google review link</p>
+                </div>
+              </div>
+
+              <div class="space-y-3.5">
+                <!-- Business Name -->
+                <div>
+                  <label class="block text-xs font-medium text-slate-300 mb-1" for="edit-biz-name">
+                    Business Name <span class="text-rose-400">*</span>
+                  </label>
+                  <input type="text" id="edit-biz-name" required placeholder="e.g. Chester Plumbing Co." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+                </div>
+
+                <!-- Google Review URL -->
+                <div>
+                  <label class="block text-xs font-medium text-slate-300 mb-1" for="edit-review-url">
+                    Google Business Review URL <span class="text-rose-400">*</span>
+                  </label>
+                  <div class="flex gap-2">
+                    <input type="url" id="edit-review-url" required placeholder="https://g.page/r/YOUR_LINK/review" class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-indigo-300 font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+                    <button type="button" onclick="testGoogleReviewUrlFromInput()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition flex items-center gap-1.5" title="Open review link in new tab">
+                      <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+                      <span>Test</span>
+                    </button>
+                  </div>
+                  <p class="text-[10px] text-slate-500 mt-1">Customers click this button in WhatsApp, Email, or SMS to leave their 5-star review.</p>
+                </div>
+
+                <!-- Follow-Up Days & Port -->
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1" for="edit-followup-days">
+                      Follow-up Threshold (Days)
+                    </label>
+                    <input type="number" id="edit-followup-days" min="1" max="90" value="3" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500 transition">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1" for="edit-port">
+                      Server Port
+                    </label>
+                    <input type="number" id="edit-port" min="1" max="65535" value="3001" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500 transition">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 2: Zerix WhatsApp Gateway -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm space-y-4">
+              <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <div>
+                  <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+                    <i class="fa-brands fa-whatsapp text-emerald-400 text-base"></i>
+                    <span>Zerix WhatsApp Gateway</span>
+                  </h3>
+                  <p class="text-xs text-emerald-400/90 mt-0.5">Self-hosted WhatsApp Engine · Direct Cloud Gateway</p>
+                </div>
+                <span id="cfg-wa-badge" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">Loading...</span>
+              </div>
+
+              <!-- Live Connected Phone Banner -->
+              <div id="openwa-live-session-banner" class="hidden p-3 rounded-lg bg-emerald-950/40 border border-emerald-800/50 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xs font-bold">
+                    <i class="fa-brands fa-whatsapp text-base"></i>
+                  </div>
+                  <div>
+                    <div class="text-xs font-bold text-emerald-200 flex items-center gap-1.5">
+                      <span id="openwa-live-phone">+91 ...</span>
+                      <span class="text-[10px] text-emerald-400 font-normal font-sans" id="openwa-live-name">(trr)</span>
+                    </div>
+                    <div class="text-[10px] text-emerald-400/80 flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                      <span id="openwa-live-status">Ready · WhatsApp Connected</span>
+                    </div>
+                  </div>
+                </div>
+                <a href="http://localhost:2886/sessions" target="_blank" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-semibold transition flex items-center gap-1">
+                  <span>Gateway Sessions</span>
+                  <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+                </a>
+              </div>
+
+              <div class="space-y-3.5">
+                <div>
+                  <label class="block text-xs font-medium text-slate-300 mb-1" for="edit-openwa-url">
+                    Zerix Gateway URL
+                  </label>
+                  <input type="text" id="edit-openwa-url" placeholder="http://localhost:2886" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition">
+                  <p class="text-[10px] text-slate-500 mt-1">Zerix WhatsApp Server URL (e.g. <code class="text-emerald-400">http://localhost:2886</code>)</p>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-medium text-slate-300 mb-1" for="edit-openwa-key">
+                    Zerix Gateway API Key (X-API-Key)
+                  </label>
+                  <div class="relative">
+                    <input type="password" id="edit-openwa-key" placeholder="owa_k1_your_api_key" class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-3 pr-10 py-2 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition">
+                    <button type="button" onclick="togglePasswordVisibility('edit-openwa-key', this)" class="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300 text-xs">
+                      <i class="fa-solid fa-eye"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-medium text-slate-300 mb-1" for="edit-openwa-session">
+                    Zerix Gateway Session ID / UUID
+                  </label>
+                  <input type="text" id="edit-openwa-session" placeholder="e.g. default or e1519353-c186-4c0c-ac2b-90e5b01090a7" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition">
+                </div>
+
+                <div class="pt-2 flex gap-2">
+                  <button type="button" onclick="testOpenWAConnection()" class="w-full py-2 px-3 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-semibold rounded-lg text-xs transition flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-plug text-xs"></i>
+                    <span>Test Zerix Gateway Connection</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Right Column: Email (SMTP) & Fallback Config -->
+          <div class="lg:col-span-6 space-y-6">
+            
+            <!-- Card 3: Email (SMTP) Configuration -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm space-y-4">
+              <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <div>
+                  <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-envelope text-indigo-400"></i>
+                    <span>Email (SMTP) Settings</span>
+                  </h3>
+                  <p class="text-xs text-slate-400 mt-0.5">Configure your outgoing email server (Gmail, Outlook, SendGrid, etc.)</p>
+                </div>
+                <span id="cfg-smtp-badge" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">Checking...</span>
+              </div>
+
+              <div class="space-y-3.5">
+                <div class="grid grid-cols-3 gap-3">
+                  <div class="col-span-2">
+                    <label class="block text-xs font-medium text-slate-300 mb-1" for="edit-smtp-host">
+                      SMTP Host
+                    </label>
+                    <input type="text" id="edit-smtp-host" placeholder="smtp.gmail.com" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1" for="edit-smtp-port">
+                      Port
+                    </label>
+                    <input type="number" id="edit-smtp-port" placeholder="587" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition">
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 pt-1">
+                  <input type="checkbox" id="edit-smtp-secure" class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                  <label for="edit-smtp-secure" class="text-xs text-slate-300 select-none cursor-pointer">
+                    Enable SSL / TLS Secure Connection (Use for port 465)
+                  </label>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-medium text-slate-300 mb-1" for="edit-smtp-user">
+                    SMTP Username / Email
+                  </label>
+                  <input type="email" id="edit-smtp-user" placeholder="your-business@gmail.com" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition">
+                </div>
+
+                <div>
+                  <label class="block text-xs font-medium text-slate-300 mb-1" for="edit-smtp-pass">
+                    SMTP Password / App Password
+                  </label>
+                  <div class="relative">
+                    <input type="password" id="edit-smtp-pass" placeholder="•••••••• (Leave blank to keep unchanged)" class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-3 pr-10 py-2 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition">
+                    <button type="button" onclick="togglePasswordVisibility('edit-smtp-pass', this)" class="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300 text-xs">
+                      <i class="fa-solid fa-eye"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-medium text-slate-300 mb-1" for="edit-smtp-from">
+                    Sender "From" Email Address
+                  </label>
+                  <input type="email" id="edit-smtp-from" placeholder="reviews@yourbusiness.com" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition">
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 4: System Runtime Info & Summary -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-3">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <i class="fa-solid fa-circle-nodes text-slate-400"></i>
+                <span>System Runtime Info</span>
+              </h3>
+              <div class="grid grid-cols-2 gap-2 text-xs font-mono">
+                <div class="bg-slate-950 p-2.5 rounded border border-slate-800">
+                  <span class="text-slate-500 text-[10px] block">Node Version:</span>
+                  <span id="cfg-node" class="text-slate-300">...</span>
+                </div>
+                <div class="bg-slate-950 p-2.5 rounded border border-slate-800">
+                  <span class="text-slate-500 text-[10px] block">Active Provider:</span>
+                  <span id="cfg-wa-provider" class="text-emerald-400 font-bold">OpenWA / wa.me</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- Sticky Save Configuration Action Bar -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between shadow-lg sticky bottom-4 z-30">
+          <div class="flex items-center gap-2 text-xs text-slate-400">
+            <i class="fa-solid fa-circle-info text-indigo-400"></i>
+            <span>Changes are immediately applied to the running server and saved to <code class="text-indigo-300">.env</code>.</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <button type="button" onclick="fetchConfig(true)" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700 transition">
+              Discard Changes
+            </button>
+            <button type="submit" id="save-config-btn" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center gap-2">
+              <i class="fa-solid fa-floppy-disk"></i>
+              <span>Save Configuration</span>
+            </button>
+          </div>
+        </div>
+
+      </form>
+
+    </section>
+
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 6: API PLAYGROUND & INTEGRATIONS -->
+    <!-- ========================================================================= -->
+    <section id="view-api" class="tab-view hidden space-y-6">
+      
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm space-y-6">
+        <div>
+          <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+            <i class="fa-solid fa-code text-indigo-400"></i>
+            <span>API Playground & Automation Webhooks</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">Integrate Review Automator into n8n, Zapier, CRMs, or custom code</p>
+        </div>
+
+        <!-- Endpoints Grid -->
+        <div class="space-y-4">
+          
+          <!-- POST /api/request (WhatsApp) -->
+          <div class="bg-slate-950 border border-emerald-950 rounded-lg p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded font-mono">POST</span>
+                <span class="text-xs font-mono font-semibold text-slate-200">/api/request (WhatsApp)</span>
+              </div>
+              <button onclick="copySnippet('curl-request-wa')" class="text-xs text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1">
+                <i class="fa-solid fa-copy"></i>
+                <span>Copy cURL</span>
+              </button>
+            </div>
+            <p class="text-xs text-slate-400">Trigger a review request via WhatsApp.</p>
+            <pre id="curl-request-wa" class="bg-slate-900 p-3 rounded text-[11px] font-mono text-slate-300 overflow-x-auto border border-slate-800">curl -X POST http://localhost:3001/api/request \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customerName": "Jane Smith",
+    "phone": "+447700900000",
+    "channel": "whatsapp",
+    "jobReference": "JOB-1029"
+  }'</pre>
+          </div>
+
+          <!-- POST /api/request (Email) -->
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 text-[10px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded font-mono">POST</span>
+                <span class="text-xs font-mono font-semibold text-slate-200">/api/request (Email)</span>
+              </div>
+              <button onclick="copySnippet('curl-request')" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1">
+                <i class="fa-solid fa-copy"></i>
+                <span>Copy cURL</span>
+              </button>
+            </div>
+            <p class="text-xs text-slate-400">Trigger a review request via Email.</p>
+            <pre id="curl-request" class="bg-slate-900 p-3 rounded text-[11px] font-mono text-slate-300 overflow-x-auto border border-slate-800">curl -X POST http://localhost:3001/api/request \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customerName": "Jane Smith",
+    "email": "jane@example.com",
+    "channel": "email",
+    "jobReference": "JOB-1029"
+  }'</pre>
+          </div>
+
+
+          <!-- GET /api/requests -->
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 text-[10px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded font-mono">GET</span>
+                <span class="text-xs font-mono font-semibold text-slate-200">/api/requests</span>
+              </div>
+              <button onclick="copySnippet('curl-get')" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1">
+                <i class="fa-solid fa-copy"></i>
+                <span>Copy cURL</span>
+              </button>
+            </div>
+            <p class="text-xs text-slate-400">Fetch all review requests sorted chronologically.</p>
+            <pre id="curl-get" class="bg-slate-900 p-3 rounded text-[11px] font-mono text-slate-300 overflow-x-auto border border-slate-800">curl http://localhost:3001/api/requests</pre>
+          </div>
+
+          <!-- POST /api/follow-up -->
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 text-[10px] font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded font-mono">POST</span>
+                <span class="text-xs font-mono font-semibold text-slate-200">/api/follow-up</span>
+              </div>
+              <button onclick="copySnippet('curl-followup')" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1">
+                <i class="fa-solid fa-copy"></i>
+                <span>Copy cURL</span>
+              </button>
+            </div>
+            <p class="text-xs text-slate-400">Trigger follow-up reminder cycle for customers due past the threshold.</p>
+            <pre id="curl-followup" class="bg-slate-900 p-3 rounded text-[11px] font-mono text-slate-300 overflow-x-auto border border-slate-800">curl -X POST http://localhost:3001/api/follow-up</pre>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Request Details Modal Dialog -->
+  <div id="details-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95">
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+        <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+          <i class="fa-solid fa-circle-info text-indigo-400"></i>
+          <span>Request Record Details</span>
+        </h3>
+        <button onclick="closeDetailsModal()" class="text-slate-400 hover:text-slate-200 p-1">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+      <div class="p-5 space-y-4 text-xs">
+        <div id="modal-fields" class="space-y-2">
+          <!-- Dynamically filled -->
+        </div>
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-400 mb-1">Raw JSON Payload:</label>
+          <pre id="modal-json" class="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-[11px] text-slate-300 max-h-48 overflow-y-auto"></pre>
+        </div>
+      </div>
+      <div class="p-4 border-t border-slate-800 bg-slate-950/40 flex justify-end gap-2">
+        <button onclick="closeDetailsModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Follow-up Modal Dialog -->
+  <div id="followup-modal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-xl w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 flex flex-col max-h-[90vh]">
+      
+      <!-- Modal Header -->
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+        <div class="flex items-center gap-2">
+          <span class="p-1.5 rounded-lg bg-purple-500/20 text-purple-400">
+            <i class="fa-solid fa-clock-rotate-left text-sm"></i>
+          </span>
+          <div>
+            <h3 class="text-sm font-bold text-slate-100" id="followup-modal-title">Send Follow-up Reminder</h3>
+            <p class="text-[11px] text-slate-400" id="followup-modal-subtitle">Preview & customize reminder before sending</p>
+          </div>
+        </div>
+        <button onclick="closeFollowupModal()" class="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-slate-800 transition">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
+        
+        <!-- Recipient Info Banner -->
+        <div id="followup-modal-recipients-box" class="bg-slate-950 p-3 rounded-lg border border-slate-800 flex items-center justify-between">
+          <div>
+            <span class="text-slate-500 text-[10px] block font-mono uppercase">Recipient(s)</span>
+            <div id="followup-modal-recipient-names" class="font-semibold text-slate-200 mt-0.5">...</div>
+          </div>
+          <span id="followup-modal-channel-badge" class="px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            WHATSAPP
+          </span>
+        </div>
+
+        <!-- Variable Pills -->
+        <div class="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded-lg flex items-center gap-2 flex-wrap">
+          <span class="text-[10px] font-semibold text-slate-400">Insert tag:</span>
+          <button type="button" onclick="insertFollowupTag('{{customerName}}')" class="text-[10px] font-mono bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded transition">&#123;&#123;customerName&#125;&#125;</button>
+          <button type="button" onclick="insertFollowupTag('{{reviewUrl}}')" class="text-[10px] font-mono bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded transition">&#123;&#123;reviewUrl&#125;&#125;</button>
+          <button type="button" onclick="insertFollowupTag('{{businessName}}')" class="text-[10px] font-mono bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded transition">&#123;&#123;businessName&#125;&#125;</button>
+        </div>
+
+        <!-- Custom Message Textarea -->
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1" for="followup-modal-textarea">
+            Reminder Message Copy
+          </label>
+          <textarea id="followup-modal-textarea" oninput="updateFollowupModalPreview()" rows="5" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:border-purple-500 leading-relaxed"></textarea>
+        </div>
+
+        <!-- Live Rendered Preview -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-400 mb-1">Live Message Preview:</label>
+          <div id="followup-modal-preview-box" class="bg-slate-950 border border-slate-800 rounded-lg p-3.5 text-xs text-slate-200 whitespace-pre-wrap font-sans">
+            <!-- Rendered preview -->
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3">
+        <button onclick="closeFollowupModal()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition">
+          Cancel
+        </button>
+        <button onclick="submitModalFollowUp()" id="followup-modal-send-btn" class="px-5 py-2 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-bold rounded-lg shadow-lg shadow-purple-600/30 transition flex items-center gap-2">
+          <i class="fa-solid fa-paper-plane text-xs"></i>
+          <span>Send Follow-up Now</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

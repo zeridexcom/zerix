@@ -1,83 +1,98 @@
-# Review Request Automator
+# Zerix — Automated Review Collection & WhatsApp Cloud Platform
 
-A simple Node.js server that helps local businesses get more Google reviews. After you finish a job, trigger a review request to your customer via email or SMS. The system tracks who's been asked and sends follow-up reminders to people who haven't left a review yet.
-
-## Why This Exists
-
-Most happy customers won't leave a review unless you ask them. This tool makes asking easy and automatic. Set it up, connect it to your CRM or job management tool, and watch your Google reviews grow.
+A modern, high-performance Node.js server and dashboard that automates Google review collection and customer follow-ups via WhatsApp (Self-Hosted Gateway & Cloud), Email (SMTP), and SMS.
 
 ## Features
 
-- **REST API** — Trigger review requests from any tool or workflow
-- **Email + SMS** — Send via whichever channel works best
-- **Customer tracking** — Keeps a record of who was asked and when
-- **Follow-up reminders** — Automatically nudge customers who haven't responded
-- **Customisable templates** — Edit the message templates to match your brand
-- **Rate limiting** — Won't spam the same customer twice
+- ⚡ **Zerix Interactive Dashboard** — Real-time metrics, live WhatsApp gateway connection indicator, customer activity table, and settings manager.
+- 📱 **Zerix WhatsApp Direct Gateway** — Direct WhatsApp integration with self-hosted headless browser engine or direct chat links.
+- 🔔 **Interactive Follow-up Hub** — Select individual or bulk customers, customize reminders on the fly with live preview, and dispatch with 1-click.
+- 📬 **Multi-Channel Delivery** — WhatsApp, Email (SMTP), and SMS dispatching.
+- 📝 **Live Template Editor** — Customise WhatsApp, Email, and SMS templates directly from the UI.
+- ⚙️ **Editable Live Configuration** — Update business details, Google review links, and API credentials on the fly without server restarts.
+- 🐳 **Docker & Cloud Ready** — Pre-configured Docker & Docker Compose setup for instant cloud deployment on Render, Railway, VPS, or AWS.
 
-## Setup
+## Quick Start
 
 ```bash
-git clone https://github.com/Hand-On-Web-Ltd/review-request-automator.git
-cd review-request-automator
+# Clone the repository
+git clone https://github.com/zerix/zerix.git
+cd zerix
+
+# Install dependencies
 npm install
-cp .env.example .env
-# Edit .env with your settings
-npm start
+
+# Start the server
+npm run dev
 ```
 
-## Environment Variables
+The Zerix dashboard will be accessible at `http://localhost:3001`.
 
-See `.env.example` for all available settings. You'll need:
-- Your Google Business review link
-- SMTP credentials for email
-- Twilio credentials for SMS (optional)
+## Environment Configuration
+
+Configure your environment variables in `.env`:
+
+```env
+PORT=3001
+BUSINESS_NAME=Zerix
+GOOGLE_REVIEW_URL=https://g.page/r/YOUR_REVIEW_LINK/review
+FOLLOW_UP_DAYS=3
+
+# WhatsApp Gateway (Self-Hosted Engine)
+OPENWA_API_URL=http://localhost:2886
+OPENWA_API_KEY=your-api-key
+OPENWA_SESSION_ID=default
+
+# Email (SMTP) - Optional
+SMTP_HOST=smtp.mailgun.org
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=reviews@zerix.app
+SMTP_PASS=your-smtp-password
+SMTP_FROM=reviews@zerix.app
+```
 
 ## API Endpoints
 
-### Send a review request
-```
+### 1. Send Review Request
+```http
 POST /api/request
 Content-Type: application/json
 
 {
   "customerName": "Jane Smith",
-  "email": "jane@example.com",
   "phone": "+447700900000",
-  "channel": "email",
-  "jobReference": "JOB-1234"
+  "channel": "whatsapp",
+  "jobReference": "JOB-1029"
 }
 ```
 
-### Check request status
-```
+### 2. Check Requests
+```http
 GET /api/requests
 GET /api/requests/:id
 ```
 
-### Trigger follow-ups manually
+### 3. Send Single Follow-up
+```http
+POST /api/requests/:id/follow-up
+Content-Type: application/json
+
+{
+  "customMessage": "Hi Jane, just following up on our service..."
+}
 ```
+
+### 4. Trigger Batch Follow-ups
+```http
 POST /api/follow-up
+Content-Type: application/json
+
+{
+  "requestIds": ["abc-123", "def-456"],
+  "customMessage": "Quick reminder to share your experience with Zerix!"
+}
 ```
-
-## Templates
-
-Edit the templates in the `templates/` folder to customise your messages:
-- `email-template.md` — HTML email body
-- `sms-template.md` — Short SMS text
-
-## Connecting to Your Workflow
-
-Works great with:
-- **n8n** — Use an HTTP Request node to call the API after a job completes
-- **Zapier** — Webhook trigger to the `/api/request` endpoint
-- **Manual** — Just use curl or Postman
-
-## About Hand On Web
-We build AI chatbots, voice agents, and automation tools for businesses.
-- 🌐 [handonweb.com](https://www.handonweb.com)
-- 📧 outreach@handonweb.com
-- 📍 Chester, UK
 
 ## Licence
-MIT
+MIT — Created by Zerix.

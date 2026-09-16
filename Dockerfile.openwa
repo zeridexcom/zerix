@@ -1,0 +1,2 @@
+FROM rmyndharis/openwa:latest
+EXPOSE 2785 2886
