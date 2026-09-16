@@ -227,6 +227,15 @@ function fillTemplate(template, vars) {
   return result;
 }
 
+function normalizeUrl(url) {
+  if (!url) return '';
+  url = url.trim().replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(url)) {
+    url = `http://${url}`;
+  }
+  return url;
+}
+
 // WhatsApp sender helper
 async function sendWhatsAppMessage(phone, message) {
   const cleanPhone = phone.replace(/[^0-9+]/g, '');
@@ -235,7 +244,7 @@ async function sendWhatsAppMessage(phone, message) {
 
   // 1. Check OpenWA (Free Self-Hosted WhatsApp Gateway - rmyndharis/OpenWA)
   if (process.env.OPENWA_API_URL) {
-    const baseUrl = process.env.OPENWA_API_URL.replace(/\/+$/, '');
+    const baseUrl = normalizeUrl(process.env.OPENWA_API_URL);
     const apiKey = process.env.OPENWA_API_KEY || '';
     let sessionId = process.env.OPENWA_SESSION_ID || '';
 
@@ -764,7 +773,7 @@ app.get('/api/openwa/status', async (req, res) => {
     });
   }
 
-  const baseUrl = process.env.OPENWA_API_URL.replace(/\/+$/, '');
+  const baseUrl = normalizeUrl(process.env.OPENWA_API_URL);
   const apiKey = process.env.OPENWA_API_KEY || '';
 
   try {
