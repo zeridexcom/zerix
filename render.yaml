@@ -36,11 +36,11 @@ services:
         value: 2785
       - key: API_MASTER_KEY
         value: zerix_admin_api_key_2026
+      - key: ENGINE_TYPE
+        value: baileys
       - key: AUTO_START_SESSIONS
         value: true
       - key: DATABASE_TYPE
         value: sqlite
       - key: DATABASE_NAME
         value: /tmp/openwa.sqlite
-      - key: PUPPETEER_HEADLESS
-        value: true
