@@ -22,17 +22,13 @@ services:
           property: host
       - key: OPENWA_SESSION_ID
         value: default
-    disk:
-      name: zerix-data
-      mountPath: /app/data
-      sizeGB: 1
 
   # Zerix WhatsApp Self-Hosted Gateway
   - type: web
     name: zerix-whatsapp-gateway
     env: docker
     dockerfilePath: ./Dockerfile.openwa
-    plan: starter
+    plan: free
     envVars:
       - key: PORT
         value: 2785
@@ -41,10 +37,6 @@ services:
       - key: DATABASE_TYPE
         value: sqlite
       - key: DATABASE_NAME
-        value: /app/data/openwa.sqlite
+        value: /tmp/openwa.sqlite
       - key: PUPPETEER_HEADLESS
         value: true
-    disk:
-      name: openwa-data
-      mountPath: /app/data
-      sizeGB: 2
