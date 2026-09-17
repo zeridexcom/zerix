@@ -20,7 +20,7 @@ services:
           name: zerix-whatsapp-gateway
           property: host
       - key: OPENWA_API_KEY
-        value: zerix_admin_api_key_2026
+        value: owa_k1_938da88d4539053105b4cffcdfa38005b0fd4d1f1fa505e79147c0d6690cf9b6
       - key: OPENWA_SESSION_ID
         value: default
 
@@ -35,7 +35,7 @@ services:
       - key: PORT
         value: 2785
       - key: API_MASTER_KEY
-        value: zerix_admin_api_key_2026
+        value: owa_k1_938da88d4539053105b4cffcdfa38005b0fd4d1f1fa505e79147c0d6690cf9b6
       - key: ENGINE_TYPE
         value: baileys
       - key: AUTO_START_SESSIONS
