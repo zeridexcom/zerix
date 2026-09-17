@@ -6,9 +6,8 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: node server.js
+    healthCheckPath: /health
     envVars:
-      - key: PORT
-        value: 3001
       - key: BUSINESS_NAME
         value: Zerix
       - key: GOOGLE_REVIEW_URL
@@ -31,6 +30,7 @@ services:
     env: docker
     dockerfilePath: ./Dockerfile.openwa
     plan: free
+    healthCheckPath: /api/health
     envVars:
       - key: PORT
         value: 2785
