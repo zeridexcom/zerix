@@ -14,6 +14,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Persistent file store
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'requests.json');
+const FEEDBACK_FILE = path.join(DATA_DIR, 'private_feedback.json');
 
 if (!fs.existsSync(DATA_DIR)) {
   try {
@@ -43,71 +44,9 @@ function loadRequestsFromDisk() {
     }
   }
 
-  // If no file exists or map is empty on initial boot, generate default records and save
-  if (map.size === 0 && !fs.existsSync(DATA_FILE)) {
-    const defaultSamples = [
-      {
-        id: crypto.randomUUID(),
-        customerName: 'Sarah Jenkins',
-        email: 'sarah.jenkins@example.com',
-        phone: '+44 7700 900123',
-        channel: 'email',
-        jobReference: 'JOB-9021',
-        status: 'sent',
-        createdAt: Date.now() - (4 * 24 * 60 * 60 * 1000),
-        followUpSent: false,
-      },
-      {
-        id: crypto.randomUUID(),
-        customerName: 'Marcus Vance',
-        email: null,
-        phone: '+44 7700 900456',
-        channel: 'whatsapp',
-        jobReference: 'JOB-9022',
-        status: 'sent',
-        createdAt: Date.now() - (4 * 24 * 60 * 60 * 1000),
-        followUpSent: false,
-        whatsappLink: 'https://wa.me/447700900456?text=Hi%20Marcus%20Vance!%20Thanks%20for%20choosing%20our%20services.',
-      },
-      {
-        id: crypto.randomUUID(),
-        customerName: 'Elena Rostova',
-        email: 'elena.rostova@example.com',
-        phone: null,
-        channel: 'email',
-        jobReference: 'JOB-9023',
-        status: 'sent',
-        createdAt: Date.now() - (6 * 24 * 60 * 60 * 1000),
-        followUpSent: true,
-        followUpSentAt: Date.now() - (3 * 24 * 60 * 60 * 1000),
-      },
-      {
-        id: crypto.randomUUID(),
-        customerName: 'David K. Miller',
-        email: 'david.miller@invalid-mail-domain-test.org',
-        phone: '+44 7700 900789',
-        channel: 'whatsapp',
-        jobReference: 'JOB-9024',
-        status: 'sent',
-        createdAt: Date.now() - (2 * 60 * 60 * 1000),
-        followUpSent: false,
-        whatsappLink: 'https://wa.me/447700900789?text=Hi%20David%20K.%20Miller!',
-      },
-      {
-        id: crypto.randomUUID(),
-        customerName: 'TechSolutions Ltd',
-        email: 'accounts@techsolutions.local',
-        phone: '+44 7700 900999',
-        channel: 'sms',
-        jobReference: 'JOB-9025',
-        status: 'queued',
-        createdAt: Date.now() - (15 * 60 * 1000),
-        followUpSent: false,
-      }
-    ];
-    defaultSamples.forEach(s => map.set(s.id, s));
+  if (!fs.existsSync(DATA_FILE)) {
     try {
-      fs.writeFileSync(DATA_FILE, JSON.stringify(defaultSamples, null, 2), 'utf8');
+      fs.writeFileSync(DATA_FILE, JSON.stringify([], null, 2), 'utf8');
     } catch (e) {
       console.error('Error writing initial requests.json:', e.message);
     }
@@ -125,7 +64,39 @@ function saveRequestsToDisk() {
   }
 }
 
+function loadFeedbackFromDisk() {
+  if (fs.existsSync(FEEDBACK_FILE)) {
+    try {
+      const raw = fs.readFileSync(FEEDBACK_FILE, 'utf8');
+      if (raw.trim()) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) return list;
+      }
+    } catch (e) {
+      console.error('Error reading private_feedback.json from disk:', e.message);
+    }
+  }
+
+  if (!fs.existsSync(FEEDBACK_FILE)) {
+    try {
+      fs.writeFileSync(FEEDBACK_FILE, JSON.stringify([], null, 2), 'utf8');
+    } catch (e) {
+      console.error('Error writing initial private_feedback.json:', e.message);
+    }
+  }
+  return [];
+}
+
+function saveFeedbackToDisk(list) {
+  try {
+    fs.writeFileSync(FEEDBACK_FILE, JSON.stringify(list, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error writing private_feedback.json to disk:', e.message);
+  }
+}
+
 const requests = loadRequestsFromDisk();
+const privateFeedbackList = loadFeedbackFromDisk();
 const startTime = Date.now();
 
 function getReviewUrl() {
@@ -142,6 +113,16 @@ function getFollowUpDays() {
 
 function getPort() {
   return process.env.PORT || 3000;
+}
+
+function getAppBaseUrl(req) {
+  if (process.env.APP_BASE_URL) return normalizeUrl(process.env.APP_BASE_URL);
+  if (process.env.RENDER_EXTERNAL_URL) return normalizeUrl(process.env.RENDER_EXTERNAL_URL);
+  if (req && req.get && req.get('host')) {
+    const proto = req.get('x-forwarded-proto') || req.protocol || 'http';
+    return `${proto}://${req.get('host')}`;
+  }
+  return `http://localhost:${getPort()}`;
 }
 
 // Email transporter management
@@ -244,49 +225,52 @@ async function sendWhatsAppMessage(phone, message) {
 
   // 1. Check OpenWA (Free Self-Hosted WhatsApp Gateway - rmyndharis/OpenWA)
   if (process.env.OPENWA_API_URL) {
-    const baseUrl = normalizeUrl(process.env.OPENWA_API_URL);
-    const apiKey = process.env.OPENWA_API_KEY || '';
-    let sessionId = process.env.OPENWA_SESSION_ID || '';
+    try {
+      const baseUrl = normalizeUrl(process.env.OPENWA_API_URL);
+      const apiKey = process.env.OPENWA_API_KEY || '';
+      let sessionId = process.env.OPENWA_SESSION_ID || '';
 
-    const headers = { 'Content-Type': 'application/json' };
-    if (apiKey) headers['X-API-Key'] = apiKey;
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['X-API-Key'] = apiKey;
 
-    // If sessionId is not provided or set to 'default', auto-discover the active ready session
-    if (!sessionId || sessionId === 'default') {
-      try {
-        const sRes = await fetch(`${baseUrl}/api/sessions`, { headers, signal: AbortSignal.timeout(3000) });
-        if (sRes.ok) {
-          const raw = await sRes.json();
-          const list = Array.isArray(raw) ? raw : [raw];
-          const ready = list.find(s => s && s.status === 'ready') || list[0];
-          if (ready && ready.id) {
-            sessionId = ready.id;
+      // If sessionId is not provided or set to 'default', auto-discover the active ready session
+      if (!sessionId || sessionId === 'default') {
+        try {
+          const sRes = await fetch(`${baseUrl}/api/sessions`, { headers, signal: AbortSignal.timeout(2000) });
+          if (sRes.ok) {
+            const raw = await sRes.json();
+            const list = Array.isArray(raw) ? raw : [raw];
+            const ready = list.find(s => s && s.status === 'ready') || list[0];
+            if (ready && ready.id) {
+              sessionId = ready.id;
+            }
           }
+        } catch (e) {
+          // ignore session auto-discovery error
         }
-      } catch (e) {
-        console.warn('Could not auto-discover OpenWA session:', e.message);
       }
+
+      if (!sessionId) sessionId = 'default';
+
+      // Call OpenWA send-text endpoint
+      const openwaRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/messages/send-text`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          chatId,
+          text: message,
+        }),
+        signal: AbortSignal.timeout(3000),
+      });
+
+      if (openwaRes.ok) {
+        const data = await openwaRes.json().catch(() => ({}));
+        console.log(`[OpenWA Success] Message sent to ${chatId} via session ${sessionId} (ID: ${data.messageId || 'ok'})`);
+        return { provider: 'openwa', messageId: data.messageId, timestamp: data.timestamp, sessionId };
+      }
+    } catch (e) {
+      console.log(`[WhatsApp Gateway Offline] Falling back to Direct wa.me link mode: ${e.message}`);
     }
-
-    if (!sessionId) sessionId = 'default';
-
-    // Call OpenWA send-text endpoint
-    const openwaRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/messages/send-text`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        chatId,
-        text: message,
-      }),
-    });
-
-    const data = await openwaRes.json().catch(() => ({}));
-    if (!openwaRes.ok) {
-      throw new Error(data.message || `OpenWA error (${openwaRes.status}): ${JSON.stringify(data)}`);
-    }
-
-    console.log(`[OpenWA Success] Message sent to ${chatId} via session ${sessionId} (ID: ${data.messageId || 'ok'})`);
-    return { provider: 'openwa', messageId: data.messageId, timestamp: data.timestamp, sessionId };
   }
 
   // 2. Check Twilio WhatsApp integration
@@ -387,15 +371,31 @@ async function processReviewRequest({ customerName, email, phone, channel, jobRe
   }
 
   const id = crypto.randomUUID();
+  const baseUrl = getAppBaseUrl();
+  const funnelUrl = `${baseUrl}/r/${id}`;
+  const star5Url = `${baseUrl}/r/${id}?stars=5`;
+  const star4Url = `${baseUrl}/r/${id}?stars=4`;
+  const star3Url = `${baseUrl}/r/${id}?stars=3`;
+  const star2Url = `${baseUrl}/r/${id}?stars=2`;
+  const star1Url = `${baseUrl}/r/${id}?stars=1`;
+
   const vars = {
     customerName,
     reviewUrl,
     businessName,
+    funnelUrl,
+    star5Url,
+    star4Url,
+    star3Url,
+    star2Url,
+    star1Url,
+    requestId: id,
+    jobReference: jobReference || '',
   };
 
   let whatsappLink = null;
   if (cleanPhone) {
-    const waText = fillTemplate(loadTemplate('whatsapp-template.md') || 'Hi {{customerName}}! Leave us a review: {{reviewUrl}}', vars);
+    const waText = fillTemplate(loadTemplate('whatsapp-template.md') || 'Hi {{customerName}}! Rate us: {{star5Url}}', vars);
     const targetDigits = cleanPhone.replace(/^\+/, '');
     whatsappLink = `https://wa.me/${targetDigits}?text=${encodeURIComponent(waText)}`;
   }
@@ -412,6 +412,9 @@ async function processReviewRequest({ customerName, email, phone, channel, jobRe
     followUpSent: false,
     errorMessage: null,
     whatsappLink,
+    funnelUrl,
+    star5Url,
+    star1Url,
   };
 
   if (queueOnly) {
@@ -616,14 +619,183 @@ app.delete('/api/requests/:id', (req, res) => {
   return res.status(404).json({ error: 'Request not found' });
 });
 
+// =========================================================================
+// SMART REVIEW FUNNEL & NEGATIVE SENTIMENT SHIELD ENDPOINTS
+// =========================================================================
+
+// Public funnel page route
+app.get('/r/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'funnel.html'));
+});
+
+// Funnel metadata query
+app.get('/api/funnel/data/:id', (req, res) => {
+  const { id } = req.params;
+  const requestedStars = parseInt(req.query.stars, 10) || null;
+
+  if (id === 'demo') {
+    return res.json({
+      id: 'demo',
+      customerName: 'Alex Morgan',
+      businessName: getBusinessName(),
+      reviewUrl: getReviewUrl(),
+      stars: requestedStars || 5,
+      jobReference: 'INV-DEMO-8842',
+      phone: '+44 7700 900000',
+      email: 'alex.morgan@example.com',
+    });
+  }
+
+  const record = requests.get(id);
+  if (!record) {
+    return res.json({
+      id,
+      customerName: 'Valued Customer',
+      businessName: getBusinessName(),
+      reviewUrl: getReviewUrl(),
+      stars: requestedStars || 5,
+      jobReference: null,
+      phone: null,
+      email: null,
+    });
+  }
+
+  return res.json({
+    id: record.id,
+    customerName: record.customerName || 'Valued Customer',
+    businessName: getBusinessName(),
+    reviewUrl: getReviewUrl(),
+    stars: requestedStars || 5,
+    jobReference: record.jobReference || null,
+    phone: record.phone || null,
+    email: record.email || null,
+  });
+});
+
+// Private feedback submission (Shields negative ratings from Google)
+app.post('/api/funnel/feedback/:id', async (req, res) => {
+  const { id } = req.params;
+  const { stars, feedbackText, resolutionType, customerName, phone, email } = req.body;
+
+  const feedbackRecord = {
+    id: crypto.randomUUID(),
+    requestId: id,
+    stars: parseInt(stars, 10) || 1,
+    feedbackText: feedbackText || '',
+    resolutionType: resolutionType || 'manager_call',
+    customerName: customerName || 'Customer',
+    phone: phone || null,
+    email: email || null,
+    createdAt: Date.now(),
+    status: 'pending_review',
+  };
+
+  privateFeedbackList.unshift(feedbackRecord);
+  saveFeedbackToDisk(privateFeedbackList);
+
+  // Update associated request record if it exists
+  const reqRecord = requests.get(id);
+  if (reqRecord) {
+    reqRecord.status = 'shielded';
+    reqRecord.shieldedAt = Date.now();
+    reqRecord.privateFeedbackId = feedbackRecord.id;
+    saveRequestsToDisk();
+  }
+
+  // If SMTP is available, alert business management immediately
+  if (transporter && (process.env.SMTP_FROM || process.env.SMTP_USER)) {
+    try {
+      const recipient = process.env.NOTIFICATION_EMAIL || process.env.SMTP_FROM || process.env.SMTP_USER;
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: recipient,
+        subject: `🚨 [Review Shield Alert] Customer Complaint - ${feedbackRecord.customerName} (${feedbackRecord.stars}★)`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 12px; margin-bottom: 16px;">
+              <h3 style="color: #991b1b; margin: 0 0 6px 0;">🛡️ Negative Review Intercepted & Shielded from Google</h3>
+              <p style="margin: 0; color: #7f1d1d; font-size: 13px;">A customer submitted internal feedback instead of posting publicly on Google. Reach out promptly to resolve the issue!</p>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tr><td style="padding: 6px 0; color: #64748b;">Customer:</td><td style="font-weight: bold; color: #0f172a;">${feedbackRecord.customerName}</td></tr>
+              <tr><td style="padding: 6px 0; color: #64748b;">Rating:</td><td style="color: #e11d48; font-weight: bold;">${'★'.repeat(feedbackRecord.stars)}${'☆'.repeat(5 - feedbackRecord.stars)} (${feedbackRecord.stars}/5 Stars)</td></tr>
+              <tr><td style="padding: 6px 0; color: #64748b;">Phone:</td><td style="font-family: monospace;">${feedbackRecord.phone || 'N/A'}</td></tr>
+              <tr><td style="padding: 6px 0; color: #64748b;">Email:</td><td style="font-family: monospace;">${feedbackRecord.email || 'N/A'}</td></tr>
+              <tr><td style="padding: 6px 0; color: #64748b;">Preferred Resolution:</td><td style="font-weight: 500;">${feedbackRecord.resolutionType}</td></tr>
+            </table>
+            <div style="margin-top: 16px; padding: 12px; background: #f8fafc; border-radius: 6px; border-left: 4px solid #ef4444;">
+              <strong style="font-size: 12px; text-transform: uppercase; color: #475569;">Customer Statement:</strong>
+              <p style="margin: 8px 0 0 0; color: #1e293b; white-space: pre-wrap; font-size: 14px;">${feedbackRecord.feedbackText || '(No comments provided)'}</p>
+            </div>
+          </div>
+        `
+      });
+    } catch (mailErr) {
+      console.error('Failed to send shield notification email:', mailErr.message);
+    }
+  }
+
+  res.json({ success: true, message: 'Private feedback received and delivered to management' });
+});
+
+// Track conversion event (User clicked copy & open Google)
+app.post('/api/funnel/track/:id', (req, res) => {
+  const { id } = req.params;
+  const { action, stars } = req.body;
+
+  const record = requests.get(id);
+  if (record) {
+    record.funnelConverted = true;
+    record.convertedAt = Date.now();
+    record.starsSelected = stars;
+    if (record.status !== 'shielded') {
+      record.status = 'reviewed';
+    }
+    saveRequestsToDisk();
+  }
+  res.json({ success: true });
+});
+
+// List all private shielded feedback
+app.get('/api/feedback', (req, res) => {
+  res.json(privateFeedbackList);
+});
+
+// Mark feedback as resolved
+app.patch('/api/feedback/:id/resolve', (req, res) => {
+  const item = privateFeedbackList.find(f => f.id === req.params.id);
+  if (item) {
+    item.status = 'resolved';
+    item.resolvedAt = Date.now();
+    saveFeedbackToDisk(privateFeedbackList);
+    return res.json({ success: true, item });
+  }
+  return res.status(404).json({ error: 'Feedback record not found' });
+});
+
 // Helper to dispatch a single follow-up message
 async function executeFollowUp(record, customMessage = null) {
   const reviewUrl = getReviewUrl();
   const businessName = getBusinessName();
+  const baseUrl = getAppBaseUrl();
+  const funnelUrl = `${baseUrl}/r/${record.id}`;
+  const star5Url = `${baseUrl}/r/${record.id}?stars=5`;
+  const star4Url = `${baseUrl}/r/${record.id}?stars=4`;
+  const star3Url = `${baseUrl}/r/${record.id}?stars=3`;
+  const star2Url = `${baseUrl}/r/${record.id}?stars=2`;
+  const star1Url = `${baseUrl}/r/${record.id}?stars=1`;
+
   const vars = {
     customerName: record.customerName,
     reviewUrl,
     businessName,
+    funnelUrl,
+    star5Url,
+    star4Url,
+    star3Url,
+    star2Url,
+    star1Url,
+    requestId: record.id,
   };
 
   if (record.channel === 'email' && transporter && record.email) {

@@ -1,1 +1,1 @@
-Hi {{customerName}}! Thanks for choosing {{businessName}}. If you were happy with our service, a quick Google review would mean a lot: {{reviewUrl}}
+Hi {{customerName}}! How was your experience with {{businessName}}? Tap to rate: {{star5Url}} (5★=Great, 1★=Issues)

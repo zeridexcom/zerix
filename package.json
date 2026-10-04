@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "openwa:mock": "node mock-openwa.js"
+    "openwa": "node openwa-server.js",
+    "openwa:mock": "node openwa-server.js"
   },
   "keywords": ["zerix", "google-reviews", "automation", "whatsapp-gateway", "customer-feedback"],
   "author": "Zerix Team <support@zerix.app>",

@@ -1,10 +1,18 @@
 Hi {{customerName}}! 👋
 
-Thank you for choosing {{businessName}}! We hope you had a great experience with us.
+Thank you for choosing {{businessName}}! How was your experience today? Tap your rating below:
 
-If you have 30 seconds, could you please leave us a quick Google review? It really helps our local business grow:
+⭐⭐⭐⭐⭐ Excellent (5/5)
+👉 {{star5Url}}
 
-⭐ {{reviewUrl}}
+⭐⭐⭐⭐ Good (4/5)
+👉 {{star4Url}}
 
-Thank you so much!
+⭐⭐⭐ Average (3/5)
+👉 {{star3Url}}
+
+⭐ Had an issue (1/5)
+👉 {{star1Url}}
+
+Thank you!
 — {{businessName}} Team
