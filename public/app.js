@@ -6,11 +6,6 @@ let backendOnline = true;
 let openwaConnected = false;
 let diagnosticCollapsed = false;
 
-let activeChatPhone = null;
-let openwaMessages = [];
-let topLayerMinimized = false;
-let topLayerExpanded = false;
-
 let serverConfig = {
   port: 3001,
   businessName: 'zerix',
@@ -26,7 +21,7 @@ let templates = {
   sms: '',
 };
 
-let activeTab = 'send';
+let activeTab = 'dashboard';
 let activeFilter = 'all';
 let searchQuery = '';
 let currentChannel = 'whatsapp';
@@ -40,20 +35,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     fetchData(),
     fetchFeedbackData(false),
     checkOpenWAStatus(false),
-    fetchOpenwaMessages(),
   ]);
 
-  switchTab('send');
-  renderWhatsAppWebChats();
   updateSimulatorPreview();
 
-  // Polling every 4 seconds for live database & WhatsApp message synchronization
-  setInterval(async () => {
-    await fetchData(false);
-    await fetchFeedbackData(false);
-    await fetchOpenwaMessages();
-    renderWhatsAppWebChats();
-  }, 4000);
+  // Polling every 5 seconds for live database & server synchronization
+  setInterval(() => {
+    fetchData(false);
+    fetchFeedbackData(false);
+  }, 5000);
 
   // Polling OpenWA health every 15 seconds
   setInterval(() => {
@@ -116,65 +106,45 @@ function copyToClipboard(text) {
   });
 }
 
-// Dedicated Page Switcher (Pages inside the Top Layer)
+// Dedicated Page Switcher
 function switchTab(tabId) {
   activeTab = tabId;
-  const tabs = ['dashboard', 'send', 'bulk', 'followups', 'templates', 'config', 'api', 'shield'];
+  const tabs = ['dashboard', 'send', 'bulk', 'followups', 'templates', 'config', 'api'];
 
   tabs.forEach(t => {
     const view = document.getElementById(`view-${t}`);
     const topTab = document.getElementById(`tab-${t}`);
-    const topLayerBtn = document.getElementById(`top-layer-tab-${t}`);
+    const sideBtn = document.getElementById(`sidebar-btn-${t}`);
 
     if (t === tabId) {
       if (view) view.classList.remove('hidden');
-      if (topTab) topTab.className = 'nav-tab-active px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all';
-      if (topLayerBtn) topLayerBtn.className = 'top-layer-tab-active px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all';
+      if (topTab) {
+        topTab.className = 'nav-tab-active px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all';
+      }
+      if (sideBtn) {
+        sideBtn.className = 'sidebar-item-active w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all text-left';
+      }
     } else {
       if (view) view.classList.add('hidden');
-      if (topTab) topTab.className = 'nav-tab-inactive px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all';
-      if (topLayerBtn) topLayerBtn.className = 'top-layer-tab-inactive px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all';
+      if (topTab) {
+        topTab.className = 'nav-tab-inactive px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all';
+      }
+      if (sideBtn) {
+        sideBtn.className = 'sidebar-item-inactive w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all text-left';
+      }
     }
   });
+
+  // Close mobile sidebar after tab switch
+  const sidebar = document.getElementById('app-sidebar');
+  if (sidebar && !sidebar.classList.contains('-translate-x-full') && window.innerWidth < 768) {
+    sidebar.classList.add('-translate-x-full');
+  }
 
   if (tabId === 'followups') {
     renderFollowupsHubTable();
   } else if (tabId === 'send') {
     updateSimulatorPreview();
-  }
-}
-
-// Top Layer Window Controls
-function minimizeTopLayer() {
-  const topLayer = document.getElementById('zerix-top-layer');
-  const dock = document.getElementById('zerix-minimized-dock');
-  if (topLayer) topLayer.classList.add('hidden');
-  if (dock) dock.classList.remove('hidden');
-  topLayerMinimized = true;
-}
-
-function expandTopLayer(tabId = null) {
-  const topLayer = document.getElementById('zerix-top-layer');
-  const dock = document.getElementById('zerix-minimized-dock');
-  if (topLayer) topLayer.classList.remove('hidden');
-  if (dock) dock.classList.add('hidden');
-  topLayerMinimized = false;
-  if (tabId) {
-    switchTab(tabId);
-  }
-}
-
-function toggleExpandTopLayer() {
-  const topLayer = document.getElementById('zerix-top-layer');
-  const icon = document.getElementById('top-layer-expand-icon');
-  if (!topLayer) return;
-  topLayerExpanded = !topLayerExpanded;
-  if (topLayerExpanded) {
-    topLayer.className = 'fixed inset-2 z-40 transition-all duration-300 glass-top-layer rounded-2xl overflow-hidden border border-[#00a884]/40 shadow-2xl flex flex-col';
-    if (icon) icon.textContent = 'fullscreen_exit';
-  } else {
-    topLayer.className = 'fixed top-3 left-1/2 -translate-x-1/2 w-[96%] max-w-6xl z-40 transition-all duration-300 glass-top-layer rounded-2xl overflow-hidden border border-[#00a884]/40 shadow-2xl flex flex-col max-h-[88vh]';
-    if (icon) icon.textContent = 'fullscreen';
   }
 }
 
@@ -282,17 +252,6 @@ async function checkOpenWAStatus(notify = false) {
       }
       if (metricProvider) metricProvider.textContent = 'WhatsApp Gateway';
       if (metricDetail) metricDetail.textContent = `+${data.activePhone || 'ready'} (Background)`;
-
-      const waSelfName = document.getElementById('wa-self-name');
-      if (waSelfName) waSelfName.textContent = data.pushName || 'trr';
-      const waSelfPhone = document.getElementById('wa-self-phone');
-      if (waSelfPhone) waSelfPhone.textContent = `+${data.activePhone || '919686868973'}`;
-      const waSelfAvatar = document.getElementById('wa-self-avatar');
-      if (waSelfAvatar && data.pushName) waSelfAvatar.textContent = data.pushName.charAt(0).toUpperCase();
-      const waSidebarPhone = document.getElementById('wa-sidebar-gateway-phone');
-      if (waSidebarPhone) waSidebarPhone.textContent = `+${data.activePhone || '919686868973'}`;
-      const topLayerGwInfo = document.getElementById('top-layer-gateway-info');
-      if (topLayerGwInfo) topLayerGwInfo.innerHTML = `Gateway Linked: <span class="text-[#25d366] font-bold">+${data.activePhone || '919686868973'}</span>`;
 
       const headerInfo = document.getElementById('header-gateway-info');
       if (headerInfo && backendOnline) headerInfo.textContent = `WhatsApp: +${data.activePhone || 'ready'}`;
@@ -1182,9 +1141,6 @@ async function submitDispatchForm() {
 
   updateMetrics();
   await fetchData();
-  if (dispatchedRecord.phone) {
-    selectWhatsAppChat(dispatchedRecord.phone);
-  }
 }
 
 function handleDispatchSubmit(e) {
@@ -1746,269 +1702,5 @@ async function resolveFeedback(feedbackId) {
   } catch (err) {
     showToast(`Error: ${err.message}`, 'error');
   }
-}
-
-// =========================================================================
-// 📱 WHATSAPP WEB BASE LAYER ENGINE (LIVE CHATS & CONVERSATIONS)
-// =========================================================================
-
-async function fetchOpenwaMessages() {
-  try {
-    const res = await fetch('/api/openwa/messages');
-    if (res.ok) {
-      openwaMessages = await res.json();
-    }
-  } catch (e) {}
-}
-
-function renderWhatsAppWebChats() {
-  const listContainer = document.getElementById('wa-chat-list');
-  if (!listContainer) return;
-
-  const contactMap = new Map();
-
-  // 1. Process all requests from database
-  allRequests.forEach(r => {
-    if (!r.phone) return;
-    const phone = r.phone;
-    if (!contactMap.has(phone)) {
-      contactMap.set(phone, {
-        customerName: r.customerName || 'Customer',
-        phone: r.phone,
-        lastMessage: `⭐⭐⭐⭐⭐ Rate us: Excellent (5/5)...`,
-        timestamp: r.createdAt || Date.now(),
-        status: r.status || 'sent',
-        id: r.id,
-      });
-    }
-  });
-
-  // 2. Process all direct gateway messages
-  openwaMessages.forEach(m => {
-    const phone = m.chatId;
-    if (phone && !contactMap.has(phone)) {
-      contactMap.set(phone, {
-        customerName: `Customer ${phone}`,
-        phone: phone,
-        lastMessage: m.text || '',
-        timestamp: m.timestamp || Date.now(),
-        status: 'delivered',
-        id: m.messageId,
-      });
-    }
-  });
-
-  const contacts = [...contactMap.values()].sort((a, b) => b.timestamp - a.timestamp);
-
-  if (contacts.length === 0) {
-    listContainer.innerHTML = `
-      <div class="p-8 text-center text-[#8696a0] text-xs space-y-2">
-        <span class="material-symbols-outlined text-[32px] text-[#00a884] block mb-1">chat</span>
-        <p class="font-bold text-[#e9edef]">No WhatsApp Chats Yet</p>
-        <p class="text-[11px] text-[#8696a0]">Send your first review request above to see it stream here!</p>
-      </div>
-    `;
-    return;
-  }
-
-  // Set default active chat if none selected
-  if (!activeChatPhone && contacts.length > 0) {
-    activeChatPhone = contacts[0].phone;
-  }
-
-  listContainer.innerHTML = contacts.map(c => {
-    const isSelected = c.phone === activeChatPhone;
-    const initial = (c.customerName ? c.customerName.charAt(0) : 'C').toUpperCase();
-    const timeStr = new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    return `
-      <div onclick="selectWhatsAppChat('${escapeHtml(c.phone)}')" class="px-3.5 py-3 flex items-center gap-3 cursor-pointer transition select-none ${isSelected ? 'bg-[#2a3942]' : 'hover:bg-[#202c33]'}">
-        <div class="w-12 h-12 rounded-full bg-[#008069] text-white font-bold flex items-center justify-center text-sm shadow-xs flex-shrink-0 uppercase">
-          ${initial}
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between">
-            <h4 class="font-bold text-xs text-[#e9edef] truncate">${escapeHtml(c.customerName)}</h4>
-            <span class="text-[10px] text-[#8696a0] font-mono flex-shrink-0">${timeStr}</span>
-          </div>
-          <div class="flex items-center justify-between mt-0.5">
-            <p class="text-[11px] text-[#8696a0] truncate max-w-[220px] font-sans flex items-center gap-1">
-              <span class="material-symbols-outlined text-[13px] text-[#53bdeb]">done_all</span>
-              <span>${escapeHtml(c.lastMessage)}</span>
-            </p>
-            <span class="text-[10px] text-[#8696a0] font-mono">${escapeHtml(c.phone)}</span>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  if (activeChatPhone) {
-    renderActiveConversation();
-  }
-}
-
-function selectWhatsAppChat(phone) {
-  activeChatPhone = phone;
-  renderWhatsAppWebChats();
-  renderActiveConversation();
-}
-
-function renderActiveConversation() {
-  const bubblesContainer = document.getElementById('wa-active-chat-bubbles');
-  const headerName = document.getElementById('wa-active-name');
-  const headerStatus = document.getElementById('wa-active-status');
-  const headerAvatar = document.getElementById('wa-active-avatar');
-  if (!bubblesContainer || !activeChatPhone) return;
-
-  // Find record in allRequests
-  const record = allRequests.find(r => r.phone === activeChatPhone) || {
-    customerName: 'Valued Customer',
-    phone: activeChatPhone,
-    id: 'demo',
-    createdAt: Date.now(),
-  };
-
-  const initial = (record.customerName ? record.customerName.charAt(0) : 'P').toUpperCase();
-  if (headerName) headerName.textContent = record.customerName;
-  if (headerStatus) headerStatus.textContent = `online • ${record.phone}`;
-  if (headerAvatar) headerAvatar.textContent = initial;
-
-  const baseUrl = window.location.origin;
-  const reqId = record.id;
-  const bizName = serverConfig.businessName || 'zerix';
-
-  const star5 = `${baseUrl}/r/${reqId}?stars=5`;
-  const star4 = `${baseUrl}/r/${reqId}?stars=4`;
-  const star3 = `${baseUrl}/r/${reqId}?stars=3`;
-  const star2 = `${baseUrl}/r/${reqId}?stars=2`;
-  const star1 = `${baseUrl}/r/${reqId}?stars=1`;
-
-  const timeStr = new Date(record.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  // Get any direct chat messages for this phone from openwaMessages
-  const extraMessages = openwaMessages.filter(m => m.chatId === activeChatPhone || m.recipientJid?.includes(activeChatPhone.replace(/[^0-9]/g, '')));
-
-  bubblesContainer.innerHTML = `
-    <!-- Outbound Review Request Bubble -->
-    <div class="self-end max-w-[85%] sm:max-w-[70%] bg-[#005c4b] text-[#e9edef] p-3.5 rounded-lg rounded-tr-none shadow-sm space-y-2 text-xs relative ml-auto">
-      <p class="font-semibold text-white">Hi <strong>${escapeHtml(record.customerName)}</strong>! 👋</p>
-      <p class="text-[12px] text-white/90 leading-relaxed">
-        Thank you for choosing <strong class="capitalize">${escapeHtml(bizName)}</strong>! How was your experience today? Tap your rating below:
-      </p>
-      
-      <!-- 5 Clickable Stars Cards in WhatsApp Bubble -->
-      <div class="space-y-1.5 pt-1">
-        <a href="${star5}" target="_blank" class="block p-2 rounded-lg bg-[#111b21]/80 hover:bg-[#111b21] border border-emerald-500/40 text-left transition shadow-xs group">
-          <div class="text-[11px] font-bold text-amber-300">⭐⭐⭐⭐⭐ Excellent (5/5)</div>
-          <div class="text-[9px] text-[#25d366] font-mono truncate">👉 ${star5}</div>
-        </a>
-        <a href="${star4}" target="_blank" class="block p-2 rounded-lg bg-[#111b21]/80 hover:bg-[#111b21] border border-emerald-500/40 text-left transition shadow-xs group">
-          <div class="text-[11px] font-bold text-amber-300">⭐⭐⭐⭐ Good (4/5)</div>
-          <div class="text-[9px] text-[#25d366] font-mono truncate">👉 ${star4}</div>
-        </a>
-        <a href="${star3}" target="_blank" class="block p-2 rounded-lg bg-[#111b21]/80 hover:bg-[#111b21] border border-slate-600 text-left transition shadow-xs group">
-          <div class="text-[11px] font-bold text-amber-400">⭐⭐⭐ Okay / Fair (3/5)</div>
-          <div class="text-[9px] text-slate-300 font-mono truncate">👉 ${star3}</div>
-        </a>
-        <a href="${star2}" target="_blank" class="block p-2 rounded-lg bg-[#111b21]/80 hover:bg-[#111b21] border border-rose-500/40 text-left transition shadow-xs group">
-          <div class="text-[11px] font-bold text-rose-300">⭐⭐ Poor (2/5)</div>
-          <div class="text-[9px] text-rose-400 font-mono truncate">👉 ${star2}</div>
-        </a>
-        <a href="${star1}" target="_blank" class="block p-2 rounded-lg bg-[#111b21]/80 hover:bg-[#111b21] border border-rose-500/40 text-left transition shadow-xs group">
-          <div class="text-[11px] font-bold text-rose-300">⭐ Very Poor (1/5)</div>
-          <div class="text-[9px] text-rose-400 font-mono truncate">👉 ${star1}</div>
-        </a>
-      </div>
-
-      <p class="text-[11px] text-white/80 pt-1">
-        Thank you!<br>— ${escapeHtml(bizName)} Team
-      </p>
-
-      <div class="flex items-center justify-between text-[10px] text-white/70 pt-1 border-t border-emerald-700/60 font-mono">
-        <span class="text-[#25d366] flex items-center gap-1">
-          <span class="material-symbols-outlined text-[12px]">send</span> Real WhatsApp Delivery
-        </span>
-        <div class="flex items-center gap-1">
-          <span>${timeStr}</span>
-          <span class="material-symbols-outlined text-[14px] text-[#53bdeb] fill-icon">done_all</span>
-        </div>
-      </div>
-    </div>
-  `;
-
-  // Append any extra direct messages exchanged
-  extraMessages.forEach(msg => {
-    const isOutbound = msg.fromMe;
-    const msgTime = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const bubble = document.createElement('div');
-    if (isOutbound) {
-      bubble.className = 'self-end max-w-[85%] sm:max-w-[70%] bg-[#005c4b] text-[#e9edef] p-3 rounded-lg rounded-tr-none shadow-sm text-xs space-y-1 ml-auto';
-      bubble.innerHTML = `
-        <p class="text-white">${escapeHtml(msg.text)}</p>
-        <div class="flex items-center justify-end gap-1 text-[10px] text-white/70 font-mono">
-          <span>${msgTime}</span>
-          <span class="material-symbols-outlined text-[14px] text-[#53bdeb]">done_all</span>
-        </div>
-      `;
-    } else {
-      bubble.className = 'self-start max-w-[85%] sm:max-w-[70%] bg-[#202c33] text-[#e9edef] p-3 rounded-lg rounded-tl-none shadow-sm text-xs space-y-1 mr-auto';
-      bubble.innerHTML = `
-        <p class="text-[#e9edef]">${escapeHtml(msg.text)}</p>
-        <div class="text-right text-[10px] text-[#8696a0] font-mono">
-          <span>${msgTime}</span>
-        </div>
-      `;
-    }
-    bubblesContainer.appendChild(bubble);
-  });
-
-  // Auto-scroll chat to bottom
-  const container = document.getElementById('wa-messages-container');
-  if (container) {
-    container.scrollTop = container.scrollHeight;
-  }
-}
-
-async function sendDirectWhatsAppMessage() {
-  const input = document.getElementById('wa-chat-input');
-  if (!input || !input.value.trim() || !activeChatPhone) return;
-
-  const text = input.value.trim();
-  input.value = '';
-
-  try {
-    const res = await fetch('/api/openwa/chat/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: activeChatPhone, text }),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      showToast('WhatsApp message sent directly!', 'success');
-      await fetchOpenwaMessages();
-      renderActiveConversation();
-    } else {
-      showToast(data.error || 'Failed to send message', 'error');
-    }
-  } catch (err) {
-    showToast('Failed to dispatch message: ' + err.message, 'error');
-  }
-}
-
-function handleWaChatKeydown(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendDirectWhatsAppMessage();
-  }
-}
-
-function handleWhatsAppChatSearch() {
-  const query = document.getElementById('wa-chat-search')?.value.toLowerCase().trim() || '';
-  const items = document.querySelectorAll('#wa-chat-list > div');
-  items.forEach(el => {
-    const text = el.textContent.toLowerCase();
-    el.style.display = text.includes(query) ? 'flex' : 'none';
-  });
 }
 

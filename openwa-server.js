@@ -126,28 +126,8 @@ async function connectToWhatsApp() {
       }
     });
 
-    sock.ev.on('messages.upsert', ({ messages, type }) => {
-      if (!messages || !Array.isArray(messages)) return;
-      for (const msg of messages) {
-        if (!msg.message) continue;
-        const fromMe = msg.key?.fromMe;
-        const remoteJid = msg.key?.remoteJid || '';
-        if (remoteJid.includes('@g.us') || remoteJid === 'status@broadcast') continue;
-        const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-        if (!text) continue;
-        const cleanDigits = remoteJid.replace(/[^0-9]/g, '');
-        if (sentMessages.some(m => m.messageId === msg.key?.id)) continue;
-        sentMessages.unshift({
-          messageId: msg.key?.id || ('wa_msg_' + Date.now()),
-          chatId: `+${cleanDigits}`,
-          recipientJid: remoteJid,
-          text,
-          fromMe: Boolean(fromMe),
-          timestamp: (msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now()),
-          status: fromMe ? 'DELIVERED' : 'RECEIVED',
-        });
-        if (sentMessages.length > 200) sentMessages.pop();
-      }
+    sock.ev.on('messages.upsert', (m) => {
+      // Future incoming message handler if needed
     });
 
   } catch (err) {
@@ -379,54 +359,188 @@ app.post(['/api/logout', '/api/sessions/:sessionId/logout'], async (req, res) =>
   }
 });
 
-// Direct chat message send (from WhatsApp Web input bar)
-app.post('/api/chat/send', async (req, res) => {
-  const { phone, text } = req.body;
-  if (!phone || !text) return res.status(400).json({ error: 'phone and text required' });
-  let rawDigits = phone.replace(/[^0-9]/g, '');
-  if (rawDigits.length === 10) rawDigits = '91' + rawDigits;
-  const recipientJid = `${rawDigits}@s.whatsapp.net`;
-  try {
-    if (!sock || connectionStatus !== 'connected') {
-      return res.status(409).json({ error: 'WhatsApp not connected' });
-    }
-    const result = await sock.sendMessage(recipientJid, { text });
-    const messageId = result?.key?.id || ('wa_' + Date.now());
-    const record = {
-      messageId,
-      sessionId: SESSION_ID,
-      chatId: `+${rawDigits}`,
-      recipientJid,
-      text,
-      fromMe: true,
-      timestamp: Date.now(),
-      status: 'DELIVERED',
-    };
-    sentMessages.unshift(record);
-    res.json({ success: true, messageId, record });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Messages feed endpoint
 app.get('/api/messages', (req, res) => {
   res.json(sentMessages);
 });
 
-// Redirect root to main app at http://localhost:3001 where WhatsApp Web UI + Top Layer live
+// Web UI for OpenWA Gateway Dashboard at http://localhost:2886
 app.get('/', (req, res) => {
-  if (req.query.raw === 'true' || req.headers.accept?.includes('application/json')) {
-    return res.json({
-      connected: connectionStatus === 'connected',
-      phone: connectedPhone,
-      messagesCount: sentMessages.length,
-      gateway: 'http://localhost:' + PORT
-    });
-  }
-  res.redirect('http://localhost:3001');
-});
+  const isConnected = connectionStatus === 'connected';
+  const rows = sentMessages.map(m => `
+    <tr style="border-bottom: 1px solid #1e293b;">
+      <td style="padding: 10px; font-family: monospace; color: #38bdf8;">${new Date(m.timestamp).toLocaleTimeString()}</td>
+      <td style="padding: 10px; font-family: monospace; color: #a78bfa;">${m.chatId}</td>
+      <td style="padding: 10px; color: #e2e8f0; max-width: 400px; word-break: break-word;">${escapeHtml(m.text)}</td>
+      <td style="padding: 10px;"><span style="background: rgba(34, 197, 94, 0.2); color: #4ade80; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: bold;">DELIVERED</span></td>
+    </tr>
+  `).join('');
 
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <title>WhatsApp Gateway — Zerix</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0b0f19; color: #f8fafc; margin: 0; padding: 1.5rem; }
+        .card { background: #131b2e; border: 1px solid #1e293b; border-radius: 14px; padding: 24px; max-width: 960px; margin: 0 auto 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+        .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+        .badge-online { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .badge-offline { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .dot-green { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+        .dot-yellow { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+        table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
+        th { text-align: left; padding: 10px; color: #94a3b8; border-bottom: 1px solid #1e293b; font-weight: 600; }
+        .btn { background: #008069; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+        .btn:hover { background: #006a57; }
+        .btn-danger { background: #dc2626; }
+        .btn-danger:hover { background: #b91c1c; }
+        .stat-box { background: #0b0f19; border: 1px solid #1e293b; border-radius: 8px; padding: 12px; }
+        .stat-label { font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 600; }
+        .stat-val { font-size: 13px; font-weight: 700; font-family: monospace; color: #cbd5e1; margin-top: 4px; }
+        .qr-card { background: #ffffff; border-radius: 12px; padding: 16px; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        .step-num { width: 22px; height: 22px; border-radius: 50%; background: #008069; color: white; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; flex-shrink: 0; }
+      </style>
+      <script>
+        // Auto-refresh until connected or to stream messages
+        let isConnected = ${isConnected};
+        setInterval(async () => {
+          try {
+            const res = await fetch('/api/status');
+            const data = await res.json();
+            if (data.connected !== isConnected) {
+              location.reload();
+            }
+          } catch(e) {}
+        }, 3000);
+
+        async function logoutSession() {
+          if (!confirm('Unlink this WhatsApp account and generate a new QR code?')) return;
+          await fetch('/api/logout', { method: 'POST' });
+          location.reload();
+        }
+      </script>
+    </head>
+    <body>
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <h2 style="margin: 0; display: flex; align-items: center; gap: 10px; font-size: 18px;">
+              <span>⚡ Zerix WhatsApp Gateway</span>
+            </h2>
+            <p style="color: #94a3b8; font-size: 12px; margin: 4px 0 0 0;">
+              Local Multi-Device Gateway on port <code>${PORT}</code> — Direct background delivery to real WhatsApp numbers
+            </p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            ${isConnected ? `
+              <span class="badge badge-online"><span class="dot dot-green"></span> WhatsApp Linked & Ready</span>
+              <button onclick="logoutSession()" class="btn btn-danger" style="padding: 6px 12px; font-size: 11px;">Unlink Device</button>
+            ` : `
+              <span class="badge badge-offline"><span class="dot dot-yellow"></span> Permission Pending (Scan QR)</span>
+            `}
+            <a href="http://localhost:3001" target="_blank" class="btn">Open Zerix App ↗</a>
+          </div>
+        </div>
+
+        ${!isConnected ? `
+          <!-- QR Code Permission Authorization Section -->
+          <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid #1e293b; border-radius: 12px; padding: 20px; margin-top: 12px;">
+            <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: center;">
+              <div style="text-align: center;">
+                ${currentQrDataUrl ? `
+                  <div class="qr-card">
+                    <img src="${currentQrDataUrl}" alt="WhatsApp QR Code" style="width: 220px; height: 220px; display: block;" />
+                  </div>
+                  <p style="font-size: 11px; color: #94a3b8; margin: 8px 0 0 0;">Auto-refreshes automatically</p>
+                ` : `
+                  <div style="width: 220px; height: 220px; display: flex; align-items: center; justify-content: center; background: #1e293b; border-radius: 12px;">
+                    <p style="font-size: 12px; color: #94a3b8;">Generating QR Code...</p>
+                  </div>
+                `}
+              </div>
+              <div style="flex: 1; min-width: 260px; max-width: 480px;">
+                <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #38bdf8;">📱 Grant WhatsApp Permission</h3>
+                <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin-bottom: 16px;">
+                  WhatsApp requires 1-time device authorization to allow this local backend to send messages automatically in the background without opening WhatsApp Web.
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 12px; color: #94a3b8;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="step-num">1</span>
+                    <span>Open <strong>WhatsApp</strong> on your mobile phone</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="step-num">2</span>
+                    <span>Tap <strong>Settings</strong> (or <strong>⋮ 3-dots</strong> on Android) &rarr; <strong>Linked Devices</strong></span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="step-num">3</span>
+                    <span>Tap <strong>Link a Device</strong> and point camera at the QR code</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="step-num">4</span>
+                    <span>Once scanned, the gateway automatically connects and starts sending!</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 16px;">
+          <div class="stat-box">
+            <div class="stat-label">Gateway Status</div>
+            <div class="stat-val" style="color: ${isConnected ? '#4ade80' : '#fbbf24'};">${isConnected ? 'CONNECTED' : 'WAITING FOR QR SCAN'}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Linked Phone</div>
+            <div class="stat-val" style="color: #4ade80;">${connectedPhone ? `+${connectedPhone}` : 'Not Linked'}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Business Identity</div>
+            <div class="stat-val" style="color: #a78bfa;">${pushName}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Real Messages Sent</div>
+            <div class="stat-val" style="color: #38bdf8;">${sentMessages.length}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 style="margin: 0; font-size: 14px; font-weight: 700;">Live Gateway Activity (${sentMessages.length} Dispatches)</h3>
+          <button onclick="location.reload()" class="btn" style="padding: 4px 10px; font-size: 11px;">Refresh</button>
+        </div>
+
+        ${sentMessages.length === 0 ? `
+          <p style="color: #64748b; font-size: 12px; padding: 20px 0; text-align: center;">
+            No review invitations dispatched yet.<br>
+            Send a review request from <a href="http://localhost:3001" target="_blank" style="color: #38bdf8;">Zerix Dashboard</a> to see it stream here.
+          </p>
+        ` : `
+          <div style="overflow-x: auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Chat ID</th>
+                  <th>Message Preview</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        `}
+      </div>
+    </body>
+    </html>
+  `);
+});
 
 function escapeHtml(str) {
   if (!str) return '';

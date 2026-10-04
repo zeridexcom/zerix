@@ -1314,26 +1314,6 @@ app.get('/api/openwa/messages', async (req, res) => {
   res.json([]);
 });
 
-// Direct WhatsApp chat message dispatch proxy
-app.post('/api/openwa/chat/send', async (req, res) => {
-  const { phone, text } = req.body;
-  if (!phone || !text) return res.status(400).json({ error: 'phone and text required' });
-  try {
-    const baseUrl = normalizeUrl(process.env.OPENWA_API_URL || 'http://localhost:2886');
-    const r = await fetch(`${baseUrl}/api/chat/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, text }),
-      signal: AbortSignal.timeout(10000),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (r.ok) return res.json(data);
-    return res.status(r.status).json(data);
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
 // Get templates
 app.get('/api/templates', (req, res) => {
   const emailTemplate = loadTemplate('email-template.md') || '';
