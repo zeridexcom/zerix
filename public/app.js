@@ -1006,6 +1006,9 @@ async function submitDispatchForm() {
   let res = null;
   let data = null;
 
+  const forceCheckbox = document.getElementById('composer-force');
+  const forceSend = forceCheckbox?.checked || false;
+
   try {
     // Attempt backend dispatch
     res = await fetch('/api/request', {
@@ -1017,7 +1020,7 @@ async function submitDispatchForm() {
         email,
         channel: currentChannel,
         jobReference,
-        force: true,
+        force: forceSend,
       }),
       signal: AbortSignal.timeout(15000),
     });
@@ -1063,6 +1066,17 @@ async function submitDispatchForm() {
   updateServerStatusUI(true);
 
   if (!res || !res.ok) {
+    if (res?.status === 409) {
+      const confirmResend = confirm(`Notice: This customer was already sent a review request within the last 7 days.\n\nDo you want to send another review request anyway?`);
+      if (confirmResend) {
+        if (forceCheckbox) forceCheckbox.checked = true;
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          sendBtn.classList.remove('opacity-70');
+        }
+        return submitDispatchForm();
+      }
+    }
     showToast(data?.error || `Failed to dispatch request (${res?.status || 500})`, 'error');
     if (sendBtn) {
       sendBtn.disabled = false;
