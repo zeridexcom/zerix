@@ -226,10 +226,24 @@ function normalizeUrl(url) {
   return url;
 }
 
+// Indian standard (+91) phone normalization helper
+function normalizeIndianPhone(phone) {
+  if (!phone) return '';
+  let digits = String(phone).replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  if (digits.length === 11 && digits.startsWith('0')) {
+    digits = digits.slice(1);
+  }
+  if (digits.length === 10) {
+    digits = '91' + digits;
+  }
+  return digits;
+}
+
 // WhatsApp sender helper
 async function sendWhatsAppMessage(phone, message) {
-  const cleanPhone = phone.replace(/[^0-9+]/g, '');
-  const targetDigits = cleanPhone.replace(/^\+/, '');
+  const targetDigits = normalizeIndianPhone(phone);
+  const cleanPhone = `+${targetDigits}`;
   const chatId = `${targetDigits}@c.us`;
 
   // 1. Check OpenWA (Free Self-Hosted WhatsApp Gateway - rmyndharis/OpenWA)
@@ -354,7 +368,8 @@ async function processReviewRequest({ customerName, email, phone, channel, jobRe
 
   const reviewUrl = getReviewUrl();
   const businessName = getBusinessName();
-  const cleanPhone = phone ? phone.replace(/[^0-9+]/g, '') : null;
+  const targetDigits = phone ? normalizeIndianPhone(phone) : null;
+  const cleanPhone = targetDigits ? `+${targetDigits}` : null;
   const normalizedEmail = email ? email.trim().toLowerCase() : null;
 
   let chosenChannel = (channel && ['whatsapp', 'email', 'sms'].includes(channel.toLowerCase()))

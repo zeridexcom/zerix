@@ -248,9 +248,17 @@ app.post('/api/sessions/:sessionId/messages/send-text', async (req, res) => {
     });
   }
 
-  // Extract pure phone digits
-  const rawDigits = chatId.replace(/[^0-9]/g, '');
-  if (!rawDigits || rawDigits.length < 7) {
+  // Extract pure phone digits and normalize Indian standard (+91)
+  let rawDigits = chatId.replace(/[^0-9]/g, '');
+  if (rawDigits.length === 11 && rawDigits.startsWith('0')) {
+    rawDigits = rawDigits.slice(1);
+  }
+  // Standard Indian 10-digit mobile number auto-prefix 91
+  if (rawDigits.length === 10) {
+    rawDigits = '91' + rawDigits;
+  }
+
+  if (!rawDigits || rawDigits.length < 8) {
     return res.status(400).json({
       error: true,
       message: `Invalid recipient phone number: ${chatId}`,
@@ -258,7 +266,7 @@ app.post('/api/sessions/:sessionId/messages/send-text', async (req, res) => {
   }
 
   // Standard WhatsApp JID format
-  const recipientJid = `${rawDigits}@s.whatsapp.net`;
+  let recipientJid = `${rawDigits}@s.whatsapp.net`;
 
   // Verify connection status
   if (connectionStatus !== 'connected' || !sock) {
@@ -273,6 +281,19 @@ app.post('/api/sessions/:sessionId/messages/send-text', async (req, res) => {
   }
 
   try {
+    // Check if number exists on WhatsApp and get canonical JID
+    try {
+      if (typeof sock.onWhatsApp === 'function') {
+        const checkResults = await sock.onWhatsApp(rawDigits);
+        const match = Array.isArray(checkResults) ? checkResults[0] : null;
+        if (match && match.jid) {
+          recipientJid = match.jid;
+        }
+      }
+    } catch (e) {
+      // Proceed with recipientJid
+    }
+
     // Dispatch real message via Baileys WhatsApp WebSocket
     const result = await sock.sendMessage(recipientJid, { text });
     const messageId = result?.key?.id || ('wa_' + Date.now());

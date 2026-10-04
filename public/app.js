@@ -805,32 +805,67 @@ function setDispatchChannel(channel) {
   if (btnMail) btnMail.className = channel === 'email' ? activeClass : inactiveClass;
   if (btnSms) btnSms.className = channel === 'sms' ? activeClass : inactiveClass;
 
+  const countryInput = document.getElementById('composer-country-code');
+  const countryHint = document.getElementById('composer-country-hint');
+  const contactSubtext = document.getElementById('composer-contact-subtext');
+
   if (channel === 'email') {
     if (label) label.textContent = 'Email Address *';
     if (input) {
       input.placeholder = 'e.g. customer@example.com';
       input.type = 'email';
     }
+    if (countryInput) countryInput.classList.add('hidden');
+    if (countryHint) countryHint.classList.add('hidden');
+    if (contactSubtext) contactSubtext.textContent = 'Enter valid email address for customer review invite.';
     if (sendBtnText) sendBtnText.textContent = 'Send via Email';
   } else {
     if (label) label.textContent = channel === 'whatsapp' ? 'WhatsApp Phone Number *' : 'Mobile Phone Number *';
     if (input) {
-      input.placeholder = 'e.g. +91 98765 43210';
+      input.placeholder = 'e.g. 98765 43210';
       input.type = 'text';
     }
+    if (countryInput) countryInput.classList.remove('hidden');
+    if (countryHint) countryHint.classList.remove('hidden');
+    if (contactSubtext) contactSubtext.innerHTML = 'Prefix defaults to Indian standard <strong>+91</strong> (editable). 10-digit mobile numbers are auto-formatted.';
     if (sendBtnText) sendBtnText.textContent = channel === 'whatsapp' ? 'Send via WhatsApp' : 'Send via SMS';
   }
 
   updateSimulatorPreview();
 }
 
+// Combine Country Code Prefix + Phone Number (with Indian Standard +91 Base)
+function getFullComposerPhone() {
+  const codeInput = document.getElementById('composer-country-code');
+  const phoneInput = document.getElementById('composer-phone');
+  let code = codeInput ? codeInput.value.trim() : '+91';
+  let phone = phoneInput ? phoneInput.value.trim() : '';
+
+  if (!phone) return '';
+  if (currentChannel === 'email') return phone;
+
+  // Clean country code e.g. +91 or 91
+  let codeDigits = code.replace(/[^0-9]/g, '') || '91';
+  let phoneDigits = phone.replace(/[^0-9]/g, '');
+
+  // Strip leading 0 if 11 digits (e.g. 07349710647 -> 7349710647)
+  if (phoneDigits.length === 11 && phoneDigits.startsWith('0')) {
+    phoneDigits = phoneDigits.slice(1);
+  }
+
+  // If user already pasted a number starting with the country code digits (e.g. 917349710647)
+  if (phoneDigits.startsWith(codeDigits) && phoneDigits.length === codeDigits.length + 10) {
+    return `+${phoneDigits}`;
+  }
+
+  // Standard combine: +[code][digits]
+  return `+${codeDigits}${phoneDigits}`;
+}
+
 // Live Update Simulator Preview in Send Page
 function updateSimulatorPreview(lastSentRecord = null) {
   const nameInput = document.getElementById('composer-name')?.value.trim();
-  const phoneInput = document.getElementById('composer-phone')?.value.trim();
-  const bizName = serverConfig.businessName || 'zerix';
-  const customerName = lastSentRecord?.customerName || nameInput || 'Valued Customer';
-  const phone = lastSentRecord?.phone || phoneInput || '';
+  const phone = lastSentRecord?.phone || getFullComposerPhone() || '';
   const cleanDigits = phone.replace(/[^0-9]/g, '');
 
   const baseUrl = window.location.origin;
@@ -939,12 +974,11 @@ function copyWameLink() {
 // Submit Single Dispatch (Handles both Online & Offline Resilient mode)
 async function submitDispatchForm() {
   const nameInput = document.getElementById('composer-name');
-  const contactInput = document.getElementById('composer-phone');
   const jobInput = document.getElementById('composer-job-ref');
   const sendBtn = document.getElementById('composer-send-btn');
 
   const customerName = nameInput?.value.trim();
-  const contact = contactInput?.value.trim();
+  const contact = getFullComposerPhone();
   const jobReference = jobInput?.value.trim() || null;
 
   if (!customerName || !contact) {
@@ -979,6 +1013,7 @@ async function submitDispatchForm() {
         email,
         channel: currentChannel,
         jobReference,
+        force: true,
       }),
       signal: AbortSignal.timeout(15000),
     });
@@ -1183,14 +1218,31 @@ function handleBulkFileUpload(event) {
       const contacts = [];
       const startIdx = (typeof rawRows[0][0] === 'string' && rawRows[0][0].toLowerCase().includes('name')) ? 1 : 0;
 
+// Normalize Imported Phone or Email (Indian standard +91 for 10-digit mobile)
+function normalizeBulkContact(contact) {
+  if (!contact) return '';
+  const trimmed = contact.trim();
+  if (trimmed.includes('@')) return trimmed;
+
+  let digits = trimmed.replace(/[^0-9]/g, '');
+  if (digits.length === 11 && digits.startsWith('0')) {
+    digits = digits.slice(1);
+  }
+  // Auto-prefix Indian 10-digit mobile numbers with +91
+  if (digits.length === 10) {
+    digits = '91' + digits;
+  }
+  return '+' + digits;
+}
+
       for (let i = startIdx; i < rawRows.length; i++) {
         const row = rawRows[i];
         if (!row || row.length === 0) continue;
         const name = String(row[0] || '').trim();
-        const contact = String(row[1] || '').trim();
+        const rawContact = String(row[1] || '').trim();
         const ref = String(row[2] || '').trim();
-        if (name && contact) {
-          contacts.push({ name, contact, ref });
+        if (name && rawContact) {
+          contacts.push({ name, contact: normalizeBulkContact(rawContact), ref });
         }
       }
 
@@ -1217,10 +1269,10 @@ function handleBulkPasteParse() {
     if (!trimmed) continue;
     const parts = trimmed.includes('\t') ? trimmed.split('\t') : trimmed.split(',');
     const name = parts[0]?.trim();
-    const contact = parts[1]?.trim();
+    const rawContact = parts[1]?.trim();
     const ref = parts[2]?.trim() || '';
-    if (name && contact) {
-      contacts.push({ name, contact, ref });
+    if (name && rawContact) {
+      contacts.push({ name, contact: normalizeBulkContact(rawContact), ref });
     }
   }
 
