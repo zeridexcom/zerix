@@ -29,6 +29,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <!-- SheetJS for Excel (.xlsx, .xls) and CSV parsing/generation -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body class="h-full flex flex-col font-['Inter',sans-serif] bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white">
 
@@ -80,6 +82,11 @@
             <span id="due-badge" class="bg-purple-600 text-white font-bold text-[10px] px-1.5 py-0.2 rounded-full">0</span>
           </button>
 
+          <button onclick="switchTab('bulk')" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-300 bg-indigo-950/50 hover:bg-indigo-900/60 border border-indigo-800/50 rounded-lg transition">
+            <i class="fa-solid fa-file-arrow-up text-indigo-400"></i>
+            <span>Bulk Import</span>
+          </button>
+
           <button onclick="switchTab('send')" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95 shadow-md shadow-indigo-600/30 rounded-lg transition">
             <i class="fa-solid fa-plus"></i>
             <span>New Request</span>
@@ -97,6 +104,10 @@
         <button onclick="switchTab('send')" id="tab-send" class="nav-tab inactive-tab flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg transition">
           <i class="fa-solid fa-paper-plane text-sm"></i>
           <span>Send Request</span>
+        </button>
+        <button onclick="switchTab('bulk')" id="tab-bulk" class="nav-tab inactive-tab flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg transition">
+          <i class="fa-solid fa-file-arrow-up text-sm"></i>
+          <span>Bulk Import</span>
         </button>
         <button onclick="switchTab('followups')" id="tab-followups" class="nav-tab inactive-tab flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg transition">
           <i class="fa-solid fa-clock-rotate-left text-sm"></i>
@@ -333,9 +344,15 @@
               </h2>
               <p class="text-xs text-slate-400 mt-0.5">Dispatches a review invite immediately or queues it</p>
             </div>
-            <button type="button" onclick="fillSampleForm()" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-1 rounded-lg border border-indigo-500/30 transition">
-              <i class="fa-solid fa-bolt mr-1"></i> Fill Sample
-            </button>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="switchTab('bulk')" class="text-xs text-slate-300 hover:text-white font-medium bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded-lg border border-slate-700 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-file-arrow-up text-indigo-400"></i>
+                <span>Bulk Import</span>
+              </button>
+              <button type="button" onclick="fillSampleForm()" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-1 rounded-lg border border-indigo-500/30 transition">
+                <i class="fa-solid fa-bolt mr-1"></i> Fill Sample
+              </button>
+            </div>
           </div>
 
           <form id="send-request-form" onsubmit="submitRequest(event)" class="mt-5 space-y-4">
@@ -502,28 +519,7 @@
             </div>
 
             <!-- SMS Mockup View -->
-            <div id="preview-sms-box" class="hidden flex-col items-center justify-center py-4">
-              <!-- Smartphone frame -->
-              <div class="w-72 bg-slate-950 border-4 border-slate-700 rounded-[2.5rem] p-3 shadow-2xl relative">
-                <!-- Speaker Notch -->
-                <div class="w-20 h-4 bg-slate-800 rounded-full mx-auto mb-3"></div>
-                
-                <div class="text-center text-[10px] text-slate-400 mb-3 font-medium">
-                  <div class="font-bold text-slate-200">Our Team (Automated)</div>
-                  <div>SMS / RCS Message</div>
-                </div>
-
-                <!-- Bubble -->
-                <div class="bg-indigo-600 text-white p-3 rounded-2xl rounded-bl-sm text-xs shadow-md leading-relaxed" id="preview-rendered-sms">
-                  <!-- Injected via JS -->
-                </div>
-
-                <div class="text-[9px] text-slate-500 text-right mt-1">Just now · Delivered</div>
-                <!-- Bottom bar -->
-                <div class="w-24 h-1 bg-slate-700 rounded-full mx-auto mt-6 mb-1"></div>
-              </div>
-            </div>
-
+            <div id="preview-sms-box" class="hidden flex flex-col items-center justify-center py-4">
               <!-- Smartphone frame -->
               <div class="w-72 bg-slate-950 border-4 border-slate-700 rounded-[2.5rem] p-3 shadow-2xl relative">
                 <!-- Speaker Notch -->
@@ -548,6 +544,305 @@
           </div>
         </div>
 
+      </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW: BULK CONTACT IMPORT (CSV, EXCEL, COPY/PASTE) -->
+    <!-- ========================================================================= -->
+    <section id="view-bulk" class="tab-view hidden space-y-6">
+      
+      <!-- Bulk Header & Explanation Banner -->
+      <div class="bg-gradient-to-r from-indigo-950/50 via-slate-900 to-sky-950/40 border border-indigo-800/40 rounded-xl p-6 relative overflow-hidden">
+        <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+          <div class="space-y-1.5 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="p-2 rounded-lg bg-indigo-500/20 text-indigo-400">
+                <i class="fa-solid fa-file-arrow-up text-lg"></i>
+              </span>
+              <div>
+                <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2">
+                  <span>Bulk Contact Import & Multi-Channel Dispatch</span>
+                  <span class="text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">WhatsApp · Email · SMS</span>
+                </h2>
+                <p class="text-xs text-slate-300 max-w-2xl mt-0.5">
+                  Import contacts from Excel (<code class="text-indigo-300 font-mono">.xlsx</code>, <code class="text-indigo-300 font-mono">.xls</code>), CSV/TSV files, or paste contact rows directly from Excel or Google Sheets.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Download Templates & Quick Sample -->
+          <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-start lg:justify-end">
+            <button type="button" onclick="downloadSampleCsv()" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-medium rounded-lg border border-slate-700 transition flex items-center gap-1.5 shadow-sm">
+              <i class="fa-solid fa-file-csv text-emerald-400 text-xs"></i>
+              <span>Download Sample CSV</span>
+            </button>
+            <button type="button" onclick="downloadSampleExcel()" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-medium rounded-lg border border-slate-700 transition flex items-center gap-1.5 shadow-sm">
+              <i class="fa-solid fa-file-excel text-emerald-500 text-xs"></i>
+              <span>Download Sample Excel</span>
+            </button>
+            <button type="button" onclick="pasteSampleBulkData()" class="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
+              <i class="fa-solid fa-wand-magic-sparkles text-amber-400 text-xs"></i>
+              <span>Try Sample Contacts</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Import Mode Switcher & Input Card -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm space-y-6">
+        
+        <!-- Input Method Tabs -->
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-3">
+          <div class="flex items-center gap-2">
+            <button type="button" id="bulk-tab-upload" onclick="switchBulkMode('upload')" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white shadow-md shadow-indigo-600/20 transition flex items-center gap-2">
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+              <span>Upload File (.csv, .xlsx, .xls)</span>
+            </button>
+            <button type="button" id="bulk-tab-paste" onclick="switchBulkMode('paste')" class="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition flex items-center gap-2">
+              <i class="fa-solid fa-paste"></i>
+              <span>Copy & Paste Text / Table</span>
+            </button>
+          </div>
+          
+          <div class="text-[11px] text-slate-400 flex items-center gap-3">
+            <span class="flex items-center gap-1"><i class="fa-brands fa-whatsapp text-emerald-400"></i> WhatsApp</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-envelope text-indigo-400"></i> Email</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-comment-sms text-cyan-400"></i> SMS</span>
+          </div>
+        </div>
+
+        <!-- Mode 1: File Dropzone -->
+        <div id="bulk-upload-panel" class="space-y-3">
+          <div id="bulk-dropzone" 
+               ondragover="handleBulkDragOver(event)" 
+               ondragleave="handleBulkDragLeave(event)" 
+               ondrop="handleBulkDrop(event)"
+               onclick="document.getElementById('bulk-file-input').click()"
+               class="border-2 border-dashed border-slate-700 hover:border-indigo-500/80 bg-slate-950/60 hover:bg-slate-950 rounded-xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center gap-3 group">
+            
+            <input type="file" id="bulk-file-input" accept=".csv, .xlsx, .xls, .tsv, text/csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="hidden" onchange="handleBulkFileSelect(event)">
+            
+            <div class="w-14 h-14 rounded-2xl bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center group-hover:scale-110 group-hover:bg-indigo-600/20 transition duration-200">
+              <i class="fa-solid fa-file-arrow-up text-2xl"></i>
+            </div>
+            <div>
+              <p class="text-sm font-semibold text-slate-200">Drag & drop your contact file here, or <span class="text-indigo-400 underline underline-offset-2">browse files</span></p>
+              <p class="text-xs text-slate-500 mt-1">Supports Excel (<span class="font-mono text-slate-400">.xlsx, .xls</span>), CSV (<span class="font-mono text-slate-400">.csv</span>), or TSV files up to 10MB</p>
+            </div>
+            <div class="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-900 border border-slate-800 rounded-full px-3 py-1 mt-1">
+              <i class="fa-solid fa-circle-info text-indigo-400"></i>
+              <span>Columns: Name, Email, Phone, Channel, JobReference</span>
+            </div>
+          </div>
+
+          <div id="bulk-file-loaded-info" class="hidden items-center justify-between p-3 bg-indigo-950/40 border border-indigo-800/40 rounded-lg text-xs">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-file-excel text-emerald-400 text-base" id="bulk-file-icon"></i>
+              <div>
+                <span class="font-semibold text-slate-200" id="bulk-file-name">contacts.xlsx</span>
+                <span class="text-slate-400 text-[11px] ml-2 font-mono" id="bulk-file-size">14 KB</span>
+              </div>
+            </div>
+            <button type="button" onclick="clearBulkFile()" class="text-slate-400 hover:text-rose-400 p-1 transition" title="Remove file">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mode 2: Copy & Paste Box -->
+        <div id="bulk-paste-panel" class="hidden space-y-3">
+          <div class="flex items-center justify-between text-xs">
+            <label for="bulk-paste-textarea" class="text-slate-300 font-medium flex items-center gap-1.5">
+              <span>Paste comma-separated, tab-separated (from Excel/Sheets), or structured contacts:</span>
+            </label>
+            <span class="text-slate-500 text-[11px]">Format: Name, Email, Phone, Channel, Reference</span>
+          </div>
+
+          <textarea id="bulk-paste-textarea" 
+                    rows="7" 
+                    placeholder="Name&#9;Email&#9;Phone&#9;Channel&#9;Reference&#10;Alex Morgan&#9;alex@example.com&#9;+447700900000&#9;whatsapp&#9;INV-1001&#10;Sarah Jenkins&#9;sarah@example.com&#9;+447700900001&#9;email&#9;INV-1002&#10;David Patel&#9;&#9;+447700900002&#9;sms&#9;JOB-8842" 
+                    oninput="handleBulkPasteInput()"
+                    class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 font-mono text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 leading-relaxed"></textarea>
+
+          <div class="flex items-center justify-between text-[11px] text-slate-500">
+            <span>Tip: Select multiple cells in Google Sheets or Excel, press Ctrl+C / Cmd+C, and paste directly here.</span>
+            <button type="button" onclick="clearBulkPaste()" class="text-slate-400 hover:text-slate-200 underline">Clear Text</button>
+          </div>
+        </div>
+
+        <!-- Bulk Import Settings (Channel selector, duplicate throttle, execution mode) -->
+        <div class="pt-4 border-t border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-4">
+          
+          <!-- Channel Mode -->
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Channel Strategy</label>
+            <select id="bulk-channel-strategy" onchange="recalculateBulkPreview()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+              <option value="auto" selected>Auto-Detect (WhatsApp if phone exists, else Email)</option>
+              <option value="column">Column-driven (Use Channel specified in row)</option>
+              <option value="whatsapp">Force All: WhatsApp (Requires Phone)</option>
+              <option value="email">Force All: Email (Requires Email)</option>
+              <option value="sms">Force All: SMS (Requires Phone)</option>
+            </select>
+            <p class="text-[10px] text-slate-500 mt-1">Controls how channels are assigned to each contact.</p>
+          </div>
+
+          <!-- Duplicate Protection -->
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">7-Day Duplicate Protection</label>
+            <select id="bulk-duplicate-strategy" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+              <option value="skip" selected>Skip (Throttle contacts requested within 7 days)</option>
+              <option value="force">Force Send (Ignore previous requests & send anyway)</option>
+            </select>
+            <p class="text-[10px] text-slate-500 mt-1">Prevents over-messaging the same customer.</p>
+          </div>
+
+          <!-- Execution Mode -->
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Dispatch Mode</label>
+            <select id="bulk-dispatch-mode" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+              <option value="send" selected>Send Immediately (Live Outbound Messages)</option>
+              <option value="queue">Queue Only (Save as 'queued' for follow-up runner)</option>
+            </select>
+            <p class="text-[10px] text-slate-500 mt-1">Choose whether to immediately fire messages.</p>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Preview & Validation Table Section -->
+      <div id="bulk-preview-section" class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm space-y-0">
+        
+        <!-- Preview Table Header Bar -->
+        <div class="p-4 border-b border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-900/60">
+          <div class="flex items-center gap-3 flex-wrap">
+            <h3 class="font-semibold text-slate-200 text-sm flex items-center gap-2">
+              <i class="fa-solid fa-list-check text-indigo-400"></i>
+              <span>Import Preview</span>
+            </h3>
+            
+            <!-- Summary Counts -->
+            <div class="flex items-center gap-2">
+              <span id="bulk-count-total" class="text-xs bg-slate-800 text-slate-300 font-mono px-2.5 py-0.5 rounded-full border border-slate-700">0 rows parsed</span>
+              <span id="bulk-count-valid" class="text-xs bg-emerald-500/10 text-emerald-400 font-mono px-2 py-0.5 rounded-full border border-emerald-500/20">0 valid</span>
+              <span id="bulk-count-invalid" class="hidden text-xs bg-rose-500/10 text-rose-400 font-mono px-2 py-0.5 rounded-full border border-rose-500/20">0 invalid</span>
+            </div>
+
+            <!-- Channel Breakdown Pills -->
+            <div id="bulk-channel-breakdown" class="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-400">
+              <span id="bulk-wa-count" class="bg-emerald-950/40 text-emerald-400 border border-emerald-800/40 px-2 py-0.5 rounded">WA: 0</span>
+              <span id="bulk-email-count" class="bg-indigo-950/40 text-indigo-400 border border-indigo-800/40 px-2 py-0.5 rounded">Email: 0</span>
+              <span id="bulk-sms-count" class="bg-cyan-950/40 text-cyan-400 border border-cyan-800/40 px-2 py-0.5 rounded">SMS: 0</span>
+            </div>
+          </div>
+
+          <!-- Quick Actions & Clear -->
+          <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <button type="button" onclick="clearBulkAll()" class="px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition">
+              <i class="fa-solid fa-trash-can mr-1"></i> Clear All
+            </button>
+            <button type="button" id="bulk-submit-btn" onclick="submitBulkImport()" disabled class="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-md shadow-indigo-600/30 transition flex items-center gap-2">
+              <i class="fa-solid fa-paper-plane text-xs"></i>
+              <span id="bulk-submit-label">Import & Dispatch (0)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Progress Bar (Active during bulk dispatch) -->
+        <div id="bulk-progress-container" class="hidden p-4 bg-slate-950 border-b border-slate-800">
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <span class="text-slate-300 font-medium flex items-center gap-2">
+              <i class="fa-solid fa-circle-notch animate-spin text-indigo-500"></i>
+              <span id="bulk-progress-status">Importing & dispatching review requests...</span>
+            </span>
+            <span id="bulk-progress-percent" class="text-indigo-400 font-mono font-bold">0%</span>
+          </div>
+          <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+            <div id="bulk-progress-fill" class="bg-gradient-to-r from-indigo-500 to-emerald-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="overflow-x-auto max-h-[480px]">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-950/80 text-slate-400 font-medium uppercase tracking-wider text-[11px] border-b border-slate-800 sticky top-0 backdrop-blur z-10">
+              <tr>
+                <th scope="col" class="px-3 py-3 w-12 text-center">#</th>
+                <th scope="col" class="px-4 py-3">Customer Name</th>
+                <th scope="col" class="px-4 py-3">Email</th>
+                <th scope="col" class="px-4 py-3">Phone</th>
+                <th scope="col" class="px-4 py-3">Assigned Channel</th>
+                <th scope="col" class="px-4 py-3">Reference</th>
+                <th scope="col" class="px-4 py-3">Status</th>
+                <th scope="col" class="px-4 py-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="bulk-preview-tbody" class="divide-y divide-slate-800/60">
+              <tr>
+                <td colspan="8" class="px-4 py-12 text-center text-slate-500">
+                  <i class="fa-solid fa-file-excel text-3xl mb-2 text-slate-600 block"></i>
+                  <p class="font-medium text-slate-400">No contacts loaded yet</p>
+                  <p class="text-xs text-slate-600 mt-1">Upload a CSV/Excel file or paste contacts above to view preview.</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+      <!-- Import Execution Results Report (Appears after import) -->
+      <div id="bulk-results-card" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+              <i class="fa-solid fa-circle-check text-base"></i>
+            </div>
+            <div>
+              <h3 class="text-sm font-bold text-slate-100">Bulk Import Completed</h3>
+              <p class="text-[11px] text-slate-400" id="bulk-results-timestamp">Finished just now</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="switchTab('dashboard')" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition">
+              View on Dashboard
+            </button>
+            <button onclick="dismissBulkResults()" class="p-1.5 text-slate-400 hover:text-slate-200 rounded-lg">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Result Metrics Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-3">
+            <span class="text-[11px] text-slate-400">Sent Immediately</span>
+            <p id="bulk-res-sent" class="text-xl font-bold text-emerald-400 mt-1">0</p>
+          </div>
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-3">
+            <span class="text-[11px] text-slate-400">Queued for Delivery</span>
+            <p id="bulk-res-queued" class="text-xl font-bold text-amber-400 mt-1">0</p>
+          </div>
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-3">
+            <span class="text-[11px] text-slate-400">Skipped (7-Day Duplicates)</span>
+            <p id="bulk-res-skipped" class="text-xl font-bold text-purple-400 mt-1">0</p>
+          </div>
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-3">
+            <span class="text-[11px] text-slate-400">Errors / Failed</span>
+            <p id="bulk-res-failed" class="text-xl font-bold text-rose-400 mt-1">0</p>
+          </div>
+        </div>
+
+        <!-- Skipped / Error Detail List if any -->
+        <div id="bulk-details-container" class="hidden space-y-2 pt-2">
+          <h4 class="text-xs font-semibold text-slate-300">Items Requiring Review:</h4>
+          <div id="bulk-details-list" class="max-h-48 overflow-y-auto space-y-1.5 text-xs font-mono">
+            <!-- Injected via JS -->
+          </div>
+        </div>
       </div>
 
     </section>

@@ -347,28 +347,46 @@ async function sendWhatsAppMessage(phone, message) {
 }
 
 
-// Send review request
-app.post('/api/request', async (req, res) => {
-  const { customerName, email, phone, channel, jobReference } = req.body;
-
+// Helper to process and dispatch a single review request
+async function processReviewRequest({ customerName, email, phone, channel, jobReference, force = false, queueOnly = false }) {
   if (!customerName || (!email && !phone)) {
-    return res.status(400).json({ error: 'customerName and either email or phone are required' });
+    throw new Error('Customer name and either email or phone are required');
   }
 
   const reviewUrl = getReviewUrl();
   const businessName = getBusinessName();
-  const chosenChannel = channel || (phone ? 'whatsapp' : 'email');
+  const cleanPhone = phone ? phone.replace(/[^0-9+]/g, '') : null;
+  const normalizedEmail = email ? email.trim().toLowerCase() : null;
 
-  // Check if already requested recently (7 days)
-  const existing = [...requests.values()].find(
-    r => (r.email === email || r.phone === phone) && Date.now() - r.createdAt < 7 * 24 * 60 * 60 * 1000
-  );
-  if (existing) {
-    return res.status(409).json({ error: 'Review already requested for this customer recently', requestId: existing.id });
+  let chosenChannel = (channel && ['whatsapp', 'email', 'sms'].includes(channel.toLowerCase()))
+    ? channel.toLowerCase()
+    : null;
+
+  if (!chosenChannel) {
+    if (cleanPhone) chosenChannel = 'whatsapp';
+    else if (normalizedEmail) chosenChannel = 'email';
+    else chosenChannel = 'whatsapp';
+  }
+
+  // Check 7-day rate-limiting duplicate unless forced
+  if (!force) {
+    const existing = [...requests.values()].find(
+      r => ((normalizedEmail && r.email && r.email.toLowerCase() === normalizedEmail) ||
+            (cleanPhone && r.phone && r.phone.replace(/[^0-9+]/g, '') === cleanPhone)) &&
+           Date.now() - r.createdAt < 7 * 24 * 60 * 60 * 1000
+    );
+    if (existing) {
+      return {
+        skipped: true,
+        reason: 'Review already requested for this customer within 7 days',
+        existingId: existing.id,
+        customerName,
+        channel: chosenChannel,
+      };
+    }
   }
 
   const id = crypto.randomUUID();
-  const cleanPhone = phone ? phone.replace(/[^0-9+]/g, '') : null;
   const vars = {
     customerName,
     reviewUrl,
@@ -385,8 +403,8 @@ app.post('/api/request', async (req, res) => {
   const record = {
     id,
     customerName,
-    email: email || null,
-    phone: phone || null,
+    email: normalizedEmail,
+    phone: cleanPhone,
     channel: chosenChannel,
     jobReference: jobReference || null,
     status: 'pending',
@@ -396,41 +414,183 @@ app.post('/api/request', async (req, res) => {
     whatsappLink,
   };
 
+  if (queueOnly) {
+    record.status = 'queued';
+    requests.set(id, record);
+    return record;
+  }
+
   try {
-    if (record.channel === 'email' && transporter && email) {
+    if (record.channel === 'email' && transporter && normalizedEmail) {
       const emailTemplate = loadTemplate('email-template.md') || 'Hi {{customerName}}, we\'d love your feedback! Leave us a review: {{reviewUrl}}';
       await transporter.sendMail({
         from: process.env.SMTP_FROM || process.env.SMTP_USER,
-        to: email,
+        to: normalizedEmail,
         subject: `How was your experience, ${customerName}?`,
         html: fillTemplate(emailTemplate, vars),
       });
       record.status = 'sent';
-    } else if (record.channel === 'whatsapp' && phone) {
+    } else if (record.channel === 'whatsapp' && cleanPhone) {
       const waTemplate = loadTemplate('whatsapp-template.md') || 'Hi {{customerName}}! Please leave us a review: {{reviewUrl}}';
       const msg = fillTemplate(waTemplate, vars);
-      const result = await sendWhatsAppMessage(phone, msg);
+      const result = await sendWhatsAppMessage(cleanPhone, msg);
       record.status = 'sent';
       record.provider = result.provider;
-    } else if (record.channel === 'sms' && phone) {
+    } else if (record.channel === 'sms' && cleanPhone) {
       const smsTemplate = loadTemplate('sms-template.md') || 'Hi {{customerName}}! How was your experience? Leave us a quick review: {{reviewUrl}}';
-      console.log(`[SMS Log] To ${phone}: ${fillTemplate(smsTemplate, vars)}`);
+      console.log(`[SMS Log] To ${cleanPhone}: ${fillTemplate(smsTemplate, vars)}`);
       record.status = 'sent';
     } else if (record.channel === 'email' && !transporter) {
       record.status = 'queued';
-      console.log(`[Email Queued - SMTP Not Configured] To ${email}: ${customerName}`);
+      console.log(`[Email Queued - SMTP Not Configured] To ${normalizedEmail}: ${customerName}`);
     } else {
       record.status = 'queued';
     }
   } catch (err) {
-    console.error('Failed to send:', err.message);
+    console.error(`Failed to send to ${customerName}:`, err.message);
     record.status = 'failed';
     record.errorMessage = err.message;
   }
 
   requests.set(id, record);
+  return record;
+}
+
+// Send single review request
+app.post('/api/request', async (req, res) => {
+  const { customerName, email, phone, channel, jobReference, force } = req.body;
+
+  if (!customerName || (!email && !phone)) {
+    return res.status(400).json({ error: 'customerName and either email or phone are required' });
+  }
+
+  try {
+    const result = await processReviewRequest({
+      customerName,
+      email,
+      phone,
+      channel,
+      jobReference,
+      force: !!force,
+    });
+
+    if (result.skipped) {
+      return res.status(409).json({ error: result.reason, requestId: result.existingId });
+    }
+
+    saveRequestsToDisk();
+    return res.status(201).json(result);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk import & send review requests
+app.post('/api/requests/bulk', async (req, res) => {
+  const { contacts, defaultChannel, force, queueOnly, delayMs = 80 } = req.body;
+
+  if (!Array.isArray(contacts) || contacts.length === 0) {
+    return res.status(400).json({ error: 'An array of contacts is required' });
+  }
+
+  if (contacts.length > 1000) {
+    return res.status(400).json({ error: 'Maximum 1,000 contacts per bulk import batch' });
+  }
+
+  const results = [];
+  const errors = [];
+  let sentCount = 0;
+  let queuedCount = 0;
+  let failedCount = 0;
+  let skippedCount = 0;
+
+  for (let i = 0; i < contacts.length; i++) {
+    const c = contacts[i];
+    const customerName = (c.customerName || c.name || '').trim();
+    const email = (c.email || '').trim() || null;
+    const phone = (c.phone || c.mobile || c.whatsapp || '').trim() || null;
+    const jobReference = (c.jobReference || c.job || c.invoice || c.ref || '').trim() || null;
+
+    let channel = (c.channel || defaultChannel || '').trim().toLowerCase();
+    if (!channel || channel === 'auto') {
+      channel = phone ? 'whatsapp' : 'email';
+    }
+
+    if (!customerName || (!email && !phone)) {
+      errors.push({
+        index: i + 1,
+        customerName: customerName || `Row #${i + 1}`,
+        error: 'Missing required customer name and contact details (email or phone)',
+      });
+      continue;
+    }
+
+    try {
+      const record = await processReviewRequest({
+        customerName,
+        email,
+        phone,
+        channel,
+        jobReference,
+        force: !!force,
+        queueOnly: !!queueOnly,
+      });
+
+      if (record.skipped) {
+        skippedCount++;
+        results.push({
+          index: i + 1,
+          customerName,
+          channel: record.channel,
+          status: 'skipped',
+          reason: record.reason,
+          existingId: record.existingId,
+        });
+      } else {
+        if (record.status === 'sent') sentCount++;
+        else if (record.status === 'queued') queuedCount++;
+        else if (record.status === 'failed') failedCount++;
+
+        results.push({
+          index: i + 1,
+          id: record.id,
+          customerName: record.customerName,
+          channel: record.channel,
+          status: record.status,
+          phone: record.phone,
+          email: record.email,
+          provider: record.provider,
+          errorMessage: record.errorMessage,
+        });
+      }
+
+      // Small pacing delay between outbound WhatsApp / Email calls
+      if (!queueOnly && delayMs > 0 && i < contacts.length - 1) {
+        await new Promise(r => setTimeout(r, Math.min(delayMs, 500)));
+      }
+    } catch (err) {
+      failedCount++;
+      errors.push({
+        index: i + 1,
+        customerName,
+        error: err.message,
+      });
+    }
+  }
+
   saveRequestsToDisk();
-  res.status(201).json(record);
+
+  res.json({
+    success: true,
+    totalReceived: contacts.length,
+    processed: results.length,
+    sent: sentCount,
+    queued: queuedCount,
+    failed: failedCount,
+    skipped: skippedCount,
+    results,
+    errors,
+  });
 });
 
 // List all requests

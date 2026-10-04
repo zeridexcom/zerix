@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Switch Main Navigation Tabs
 function switchTab(tabId) {
   activeTab = tabId;
-  const tabs = ['dashboard', 'send', 'followups', 'templates', 'config', 'api'];
+  const tabs = ['dashboard', 'send', 'bulk', 'followups', 'templates', 'config', 'api'];
   
   tabs.forEach(t => {
     const btn = document.getElementById(`tab-${t}`);
@@ -1541,3 +1541,811 @@ function formatUptime(seconds) {
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;
 }
+
+// =========================================================================
+// BULK CONTACT IMPORT (CSV, EXCEL, COPY/PASTE)
+// =========================================================================
+
+let bulkContacts = [];
+let bulkMode = 'upload';
+let bulkImporting = false;
+let bulkSelectedFile = null;
+
+// Switch Bulk Input Mode (Upload vs Copy & Paste)
+function switchBulkMode(mode) {
+  bulkMode = mode;
+  const uploadPanel = document.getElementById('bulk-upload-panel');
+  const pastePanel = document.getElementById('bulk-paste-panel');
+  const uploadBtn = document.getElementById('bulk-tab-upload');
+  const pasteBtn = document.getElementById('bulk-tab-paste');
+
+  if (mode === 'upload') {
+    if (uploadPanel) uploadPanel.classList.remove('hidden');
+    if (pastePanel) pastePanel.classList.add('hidden');
+    if (uploadBtn) {
+      uploadBtn.className = 'px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white shadow-md shadow-indigo-600/20 transition flex items-center gap-2';
+    }
+    if (pasteBtn) {
+      pasteBtn.className = 'px-3.5 py-1.5 text-xs font-medium rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition flex items-center gap-2';
+    }
+  } else {
+    if (uploadPanel) uploadPanel.classList.add('hidden');
+    if (pastePanel) pastePanel.classList.remove('hidden');
+    if (uploadBtn) {
+      uploadBtn.className = 'px-3.5 py-1.5 text-xs font-medium rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition flex items-center gap-2';
+    }
+    if (pasteBtn) {
+      pasteBtn.className = 'px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white shadow-md shadow-indigo-600/20 transition flex items-center gap-2';
+    }
+  }
+}
+
+// Drag & Drop Handlers for File Dropzone
+function handleBulkDragOver(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const dropzone = document.getElementById('bulk-dropzone');
+  if (dropzone) {
+    dropzone.classList.add('border-indigo-500', 'bg-indigo-950/20');
+  }
+}
+
+function handleBulkDragLeave(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const dropzone = document.getElementById('bulk-dropzone');
+  if (dropzone) {
+    dropzone.classList.remove('border-indigo-500', 'bg-indigo-950/20');
+  }
+}
+
+function handleBulkDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const dropzone = document.getElementById('bulk-dropzone');
+  if (dropzone) {
+    dropzone.classList.remove('border-indigo-500', 'bg-indigo-950/20');
+  }
+
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    processBulkFile(e.dataTransfer.files[0]);
+  }
+}
+
+function handleBulkFileSelect(e) {
+  if (e.target && e.target.files && e.target.files.length > 0) {
+    processBulkFile(e.target.files[0]);
+  }
+}
+
+// Process selected file (Excel .xlsx/.xls or CSV/TSV)
+function processBulkFile(file) {
+  if (!file) return;
+  bulkSelectedFile = file;
+
+  const fileName = file.name || 'file';
+  const fileExt = fileName.split('.').pop().toLowerCase();
+  const fileSizeStr = file.size > 1024 * 1024 
+    ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
+    : `${Math.round(file.size / 1024)} KB`;
+
+  // Update file info display
+  const infoCard = document.getElementById('bulk-file-loaded-info');
+  const nameSpan = document.getElementById('bulk-file-name');
+  const sizeSpan = document.getElementById('bulk-file-size');
+  const icon = document.getElementById('bulk-file-icon');
+
+  if (infoCard) infoCard.classList.remove('hidden');
+  if (infoCard) infoCard.classList.add('flex');
+  if (nameSpan) nameSpan.textContent = fileName;
+  if (sizeSpan) sizeSpan.textContent = fileSizeStr;
+
+  if (icon) {
+    if (fileExt === 'xlsx' || fileExt === 'xls') {
+      icon.className = 'fa-solid fa-file-excel text-emerald-400 text-lg';
+    } else {
+      icon.className = 'fa-solid fa-file-csv text-sky-400 text-lg';
+    }
+  }
+
+  if (fileExt === 'xlsx' || fileExt === 'xls') {
+    if (typeof XLSX === 'undefined') {
+      showToast('SheetJS Excel library is not available. Please refresh or check connection.', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+        parseRawRowsToContacts(rawRows);
+        showToast(`Parsed ${bulkContacts.length} contacts from Excel sheet "${firstSheetName}"`, 'success');
+      } catch (err) {
+        console.error('Error reading Excel file:', err);
+        showToast(`Failed to parse Excel file: ${err.message}`, 'error');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    // CSV, TSV, or TXT
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const text = e.target.result || '';
+        parseTextToContacts(text);
+        showToast(`Parsed ${bulkContacts.length} contacts from ${fileName}`, 'success');
+      } catch (err) {
+        console.error('Error reading CSV file:', err);
+        showToast(`Failed to parse CSV file: ${err.message}`, 'error');
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+}
+
+// Copy-Paste Text Area Handler
+function handleBulkPasteInput() {
+  const textarea = document.getElementById('bulk-paste-textarea');
+  if (!textarea) return;
+  const text = textarea.value.trim();
+  if (!text) {
+    bulkContacts = [];
+    renderBulkPreview();
+    return;
+  }
+  parseTextToContacts(text);
+}
+
+// Parse Raw Text (CSV, TSV, Tab-delimited copy-paste)
+function parseTextToContacts(text) {
+  if (!text) {
+    bulkContacts = [];
+    renderBulkPreview();
+    return;
+  }
+
+  const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+  if (lines.length === 0) {
+    bulkContacts = [];
+    renderBulkPreview();
+    return;
+  }
+
+  // Detect delimiter: check tabs vs commas vs semicolons in top 5 lines
+  let tabCount = 0;
+  let commaCount = 0;
+  let semiCount = 0;
+  const sample = lines.slice(0, 5);
+  sample.forEach(l => {
+    tabCount += (l.match(/\t/g) || []).length;
+    commaCount += (l.match(/,/g) || []).length;
+    semiCount += (l.match(/;/g) || []).length;
+  });
+
+  let delimiter = ',';
+  if (tabCount >= commaCount && tabCount >= semiCount && tabCount > 0) {
+    delimiter = '\t';
+  } else if (semiCount > commaCount && semiCount > 0) {
+    delimiter = ';';
+  }
+
+  const rawRows = lines.map(line => parseDelimitedLine(line, delimiter));
+  parseRawRowsToContacts(rawRows);
+}
+
+// Delimited line tokenizer respecting quotes
+function parseDelimitedLine(line, delimiter) {
+  const cells = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === delimiter && !inQuotes) {
+      cells.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+// Main parser translating 2D array of cells into contact objects
+function parseRawRowsToContacts(rawRows) {
+  bulkContacts = [];
+  if (!rawRows || rawRows.length === 0) {
+    renderBulkPreview();
+    return;
+  }
+
+  // Check row 0 for header indicators
+  const row0 = rawRows[0].map(c => String(c || '').trim().toLowerCase());
+  let hasHeader = false;
+  let colName = -1;
+  let colEmail = -1;
+  let colPhone = -1;
+  let colChannel = -1;
+  let colJob = -1;
+
+  row0.forEach((cell, idx) => {
+    if (colName === -1 && (cell.includes('name') || cell.includes('customer') || cell.includes('client'))) {
+      colName = idx;
+      hasHeader = true;
+    } else if (colEmail === -1 && (cell.includes('email') || cell.includes('mail'))) {
+      colEmail = idx;
+      hasHeader = true;
+    } else if (colPhone === -1 && (cell.includes('phone') || cell.includes('mobile') || cell.includes('tel') || cell.includes('whatsapp') || cell.includes('number'))) {
+      colPhone = idx;
+      hasHeader = true;
+    } else if (colChannel === -1 && (cell.includes('channel') || cell.includes('method') || cell.includes('type') || cell.includes('via'))) {
+      colChannel = idx;
+      hasHeader = true;
+    } else if (colJob === -1 && (cell.includes('job') || cell.includes('ref') || cell.includes('invoice') || cell.includes('order'))) {
+      colJob = idx;
+      hasHeader = true;
+    }
+  });
+
+  const startIndex = hasHeader ? 1 : 0;
+  const channelStrategy = document.getElementById('bulk-channel-strategy')?.value || 'auto';
+  const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+
+  for (let i = startIndex; i < rawRows.length; i++) {
+    const row = rawRows[i];
+    if (!row || row.every(cell => String(cell || '').trim() === '')) {
+      continue; // Skip blank rows
+    }
+
+    let customerName = '';
+    let email = '';
+    let phone = '';
+    let rowChannel = '';
+    let jobReference = '';
+
+    if (hasHeader) {
+      if (colName !== -1 && row[colName] !== undefined) customerName = String(row[colName]).trim();
+      if (colEmail !== -1 && row[colEmail] !== undefined) email = String(row[colEmail]).trim();
+      if (colPhone !== -1 && row[colPhone] !== undefined) phone = String(row[colPhone]).trim();
+      if (colChannel !== -1 && row[colChannel] !== undefined) rowChannel = String(row[colChannel]).trim().toLowerCase();
+      if (colJob !== -1 && row[colJob] !== undefined) jobReference = String(row[colJob]).trim();
+    } else {
+      // Heuristic column detection
+      customerName = String(row[0] || '').trim();
+      for (let c = 1; c < row.length; c++) {
+        const val = String(row[c] || '').trim();
+        if (!val) continue;
+
+        if (val.includes('@') && !email) {
+          email = val;
+        } else if ((val.startsWith('+') || /^[0-9\s\-()]{7,}$/.test(val)) && !phone) {
+          phone = val;
+        } else if (['whatsapp', 'email', 'sms', 'auto'].includes(val.toLowerCase()) && !rowChannel) {
+          rowChannel = val.toLowerCase();
+        } else if (!jobReference) {
+          jobReference = val;
+        }
+      }
+    }
+
+    // Clean phone number (remove spaces, parentheses, dashes)
+    let cleanPhone = phone ? phone.replace(/[\s\-\(\)]/g, '') : '';
+    if (cleanPhone && !cleanPhone.startsWith('+') && cleanPhone.length === 10) {
+      // Default clean
+      cleanPhone = cleanPhone;
+    }
+
+    // Determine target channel based on strategy & inputs
+    let targetChannel = 'auto';
+    if (channelStrategy === 'whatsapp') {
+      targetChannel = 'whatsapp';
+    } else if (channelStrategy === 'email') {
+      targetChannel = 'email';
+    } else if (channelStrategy === 'sms') {
+      targetChannel = 'sms';
+    } else if (channelStrategy === 'column' && rowChannel && ['whatsapp', 'email', 'sms'].includes(rowChannel)) {
+      targetChannel = rowChannel;
+    } else {
+      // Auto-detect: WhatsApp if phone exists, else Email
+      if (cleanPhone) {
+        targetChannel = 'whatsapp';
+      } else if (email) {
+        targetChannel = 'email';
+      } else {
+        targetChannel = 'whatsapp';
+      }
+    }
+
+    // Check for recent duplicates in existing requests
+    const isDuplicate = allRequests.some(r => {
+      if (r.createdAt < sevenDaysAgo) return false;
+      if (cleanPhone && r.phone && r.phone === cleanPhone) return true;
+      if (email && r.email && r.email.toLowerCase() === email.toLowerCase()) return true;
+      return false;
+    });
+
+    // Validation checks
+    let valid = true;
+    let reason = 'Ready';
+
+    if (!customerName) {
+      valid = false;
+      reason = 'Missing customer name';
+    } else if (!email && !cleanPhone) {
+      valid = false;
+      reason = 'Missing both email and phone';
+    } else if (targetChannel === 'whatsapp' && !cleanPhone) {
+      valid = false;
+      reason = 'WhatsApp requires phone number';
+    } else if (targetChannel === 'sms' && !cleanPhone) {
+      valid = false;
+      reason = 'SMS requires phone number';
+    } else if (targetChannel === 'email' && !email) {
+      valid = false;
+      reason = 'Email channel requires valid email';
+    } else if (isDuplicate) {
+      reason = 'Duplicate: Requested within 7 days';
+    }
+
+    bulkContacts.push({
+      originalIndex: i + 1,
+      customerName,
+      email,
+      phone: cleanPhone,
+      channel: targetChannel,
+      jobReference,
+      valid,
+      reason,
+      isDuplicate,
+    });
+  }
+
+  renderBulkPreview();
+}
+
+// Recalculate preview when user modifies strategy
+function recalculateBulkPreview() {
+  const channelStrategy = document.getElementById('bulk-channel-strategy')?.value || 'auto';
+  const dispatchMode = document.getElementById('bulk-dispatch-mode')?.value || 'send';
+  const submitLabel = document.getElementById('bulk-submit-label');
+
+  bulkContacts.forEach(c => {
+    let targetChannel = 'auto';
+    if (channelStrategy === 'whatsapp') {
+      targetChannel = 'whatsapp';
+    } else if (channelStrategy === 'email') {
+      targetChannel = 'email';
+    } else if (channelStrategy === 'sms') {
+      targetChannel = 'sms';
+    } else {
+      targetChannel = c.phone ? 'whatsapp' : 'email';
+    }
+    c.channel = targetChannel;
+
+    let valid = true;
+    let reason = 'Ready';
+    if (!c.customerName) {
+      valid = false;
+      reason = 'Missing customer name';
+    } else if (!c.email && !c.phone) {
+      valid = false;
+      reason = 'Missing both email and phone';
+    } else if (targetChannel === 'whatsapp' && !c.phone) {
+      valid = false;
+      reason = 'WhatsApp requires phone number';
+    } else if (targetChannel === 'sms' && !c.phone) {
+      valid = false;
+      reason = 'SMS requires phone number';
+    } else if (targetChannel === 'email' && !c.email) {
+      valid = false;
+      reason = 'Email channel requires valid email';
+    } else if (c.isDuplicate) {
+      reason = 'Duplicate: Requested within 7 days';
+    }
+
+    c.valid = valid;
+    c.reason = reason;
+  });
+
+  renderBulkPreview();
+}
+
+// Render Preview Table & Statistics
+function renderBulkPreview() {
+  const tbody = document.getElementById('bulk-preview-tbody');
+  const countTotal = document.getElementById('bulk-count-total');
+  const countValid = document.getElementById('bulk-count-valid');
+  const countInvalid = document.getElementById('bulk-count-invalid');
+  const waCountSpan = document.getElementById('bulk-wa-count');
+  const emailCountSpan = document.getElementById('bulk-email-count');
+  const smsCountSpan = document.getElementById('bulk-sms-count');
+  const channelBreakdown = document.getElementById('bulk-channel-breakdown');
+  const submitBtn = document.getElementById('bulk-submit-btn');
+  const submitLabel = document.getElementById('bulk-submit-label');
+  const dispatchMode = document.getElementById('bulk-dispatch-mode')?.value || 'send';
+
+  if (!tbody) return;
+
+  const total = bulkContacts.length;
+  const validCount = bulkContacts.filter(c => c.valid).length;
+  const invalidCount = total - validCount;
+
+  let waCount = 0;
+  let emailCount = 0;
+  let smsCount = 0;
+
+  bulkContacts.forEach(c => {
+    if (c.valid) {
+      if (c.channel === 'whatsapp') waCount++;
+      else if (c.channel === 'email') emailCount++;
+      else if (c.channel === 'sms') smsCount++;
+    }
+  });
+
+  // Update counters
+  if (countTotal) countTotal.textContent = `${total} rows parsed`;
+  if (countValid) countValid.textContent = `${validCount} valid`;
+  if (countInvalid) {
+    if (invalidCount > 0) {
+      countInvalid.classList.remove('hidden');
+      countInvalid.textContent = `${invalidCount} issues`;
+    } else {
+      countInvalid.classList.add('hidden');
+    }
+  }
+
+  if (channelBreakdown) {
+    if (total > 0) {
+      channelBreakdown.classList.remove('hidden');
+      channelBreakdown.classList.add('flex');
+    } else {
+      channelBreakdown.classList.add('hidden');
+    }
+  }
+
+  if (waCountSpan) waCountSpan.textContent = `WA: ${waCount}`;
+  if (emailCountSpan) emailCountSpan.textContent = `Email: ${emailCount}`;
+  if (smsCountSpan) smsCountSpan.textContent = `SMS: ${smsCount}`;
+
+  // Update submit button
+  if (submitBtn) {
+    submitBtn.disabled = validCount === 0 || bulkImporting;
+  }
+  if (submitLabel) {
+    const verb = dispatchMode === 'queue' ? 'Import & Queue' : 'Import & Dispatch';
+    submitLabel.textContent = `${verb} (${validCount})`;
+  }
+
+  if (total === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" class="px-4 py-12 text-center text-slate-500">
+          <i class="fa-solid fa-file-excel text-3xl mb-2 text-slate-600 block"></i>
+          <p class="font-medium text-slate-400">No contacts loaded yet</p>
+          <p class="text-xs text-slate-600 mt-1">Upload an Excel/CSV file or paste contacts above to view preview.</p>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = bulkContacts.map((c, index) => {
+    // Channel Badge
+    let channelBadge = '';
+    if (c.channel === 'whatsapp') {
+      channelBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium text-[11px]"><i class="fa-brands fa-whatsapp"></i> WhatsApp</span>`;
+    } else if (c.channel === 'email') {
+      channelBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-medium text-[11px]"><i class="fa-solid fa-envelope"></i> Email</span>`;
+    } else if (c.channel === 'sms') {
+      channelBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-medium text-[11px]"><i class="fa-solid fa-comment-sms"></i> SMS</span>`;
+    } else {
+      channelBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 font-medium text-[11px]">Auto</span>`;
+    }
+
+    // Status Badge
+    let statusBadge = '';
+    if (!c.valid) {
+      statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-medium text-[10px]" title="${escapeHtml(c.reason)}"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(c.reason)}</span>`;
+    } else if (c.isDuplicate) {
+      statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium text-[10px]" title="Customer received a request in the past 7 days"><i class="fa-solid fa-shield-halved"></i> 7-Day Duplicate</span>`;
+    } else {
+      statusBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium text-[10px]"><i class="fa-solid fa-check"></i> Ready</span>`;
+    }
+
+    return `
+      <tr class="hover:bg-slate-800/40 transition ${!c.valid ? 'bg-rose-950/10' : ''}">
+        <td class="px-3 py-2.5 text-center text-slate-500 font-mono text-[11px]">${index + 1}</td>
+        <td class="px-4 py-2.5 font-medium text-slate-200">
+          ${c.customerName ? escapeHtml(c.customerName) : '<span class="text-rose-400 italic">Missing name</span>'}
+        </td>
+        <td class="px-4 py-2.5 text-slate-400 font-mono text-[11px]">
+          ${c.email ? escapeHtml(c.email) : '<span class="text-slate-600">—</span>'}
+        </td>
+        <td class="px-4 py-2.5 text-slate-400 font-mono text-[11px]">
+          ${c.phone ? escapeHtml(c.phone) : '<span class="text-slate-600">—</span>'}
+        </td>
+        <td class="px-4 py-2.5">${channelBadge}</td>
+        <td class="px-4 py-2.5 text-slate-400 font-mono text-[11px]">
+          ${c.jobReference ? escapeHtml(c.jobReference) : '<span class="text-slate-600">—</span>'}
+        </td>
+        <td class="px-4 py-2.5">${statusBadge}</td>
+        <td class="px-4 py-2.5 text-right">
+          <button type="button" onclick="removeBulkContact(${index})" title="Remove contact from import" class="text-slate-500 hover:text-rose-400 p-1 transition rounded">
+            <i class="fa-solid fa-trash-can text-xs"></i>
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// Remove single row from bulk array
+function removeBulkContact(index) {
+  if (index >= 0 && index < bulkContacts.length) {
+    bulkContacts.splice(index, 1);
+    renderBulkPreview();
+    showToast('Row removed from import list', 'info');
+  }
+}
+
+// Clear individual sections
+function clearBulkFile() {
+  bulkSelectedFile = null;
+  const fileInput = document.getElementById('bulk-file-input');
+  if (fileInput) fileInput.value = '';
+  const infoCard = document.getElementById('bulk-file-loaded-info');
+  if (infoCard) {
+    infoCard.classList.add('hidden');
+    infoCard.classList.remove('flex');
+  }
+  bulkContacts = [];
+  renderBulkPreview();
+}
+
+function clearBulkPaste() {
+  const textarea = document.getElementById('bulk-paste-textarea');
+  if (textarea) textarea.value = '';
+  bulkContacts = [];
+  renderBulkPreview();
+}
+
+function clearBulkAll() {
+  clearBulkFile();
+  clearBulkPaste();
+  dismissBulkResults();
+  showToast('Bulk import queue cleared', 'info');
+}
+
+function dismissBulkResults() {
+  const card = document.getElementById('bulk-results-card');
+  if (card) card.classList.add('hidden');
+}
+
+// Populate sample contacts into copy-paste box for testing
+function pasteSampleBulkData() {
+  switchBulkMode('paste');
+  const textarea = document.getElementById('bulk-paste-textarea');
+  if (!textarea) return;
+
+  const sampleTsv = 
+`Customer Name\tEmail\tPhone\tChannel\tReference
+Alex Morgan\talex.morgan@example.com\t+447700900000\twhatsapp\tINV-1001
+Sarah Jenkins\tsarah.jenkins@example.com\t\temail\tINV-1002
+David Patel\t\t+447700900002\tsms\tJOB-8842
+Elena Rostova\telena.rostova@example.com\t+447700900003\twhatsapp\tINV-1004
+Marcus Vance\tmarcus.v@example.com\t+447700900004\tauto\tPO-9912
+Priya Sharma\tpriya@example.com\t+447700900005\twhatsapp\tJOB-3319`;
+
+  textarea.value = sampleTsv;
+  handleBulkPasteInput();
+  showToast('Loaded 6 demo contacts for bulk testing', 'success');
+}
+
+// Download Sample CSV Template
+function downloadSampleCsv() {
+  const csvContent = 
+`Customer Name,Email,Phone,Channel,Job Reference
+Alex Morgan,alex.morgan@example.com,+447700900000,whatsapp,INV-1001
+Sarah Jenkins,sarah.jenkins@example.com,,email,INV-1002
+David Patel,,+447700900002,sms,JOB-8842
+Elena Rostova,elena.rostova@example.com,+447700900003,whatsapp,INV-1004
+Marcus Vance,marcus.v@example.com,+447700900004,auto,PO-9912`;
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', 'zerix_sample_contacts.csv');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  showToast('Downloaded sample CSV template', 'info');
+}
+
+// Download Sample Excel (.xlsx) Template using SheetJS
+function downloadSampleExcel() {
+  if (typeof XLSX === 'undefined') {
+    downloadSampleCsv();
+    return;
+  }
+
+  const sampleData = [
+    ['Customer Name', 'Email', 'Phone', 'Channel', 'Job Reference'],
+    ['Alex Morgan', 'alex.morgan@example.com', '+447700900000', 'whatsapp', 'INV-1001'],
+    ['Sarah Jenkins', 'sarah.jenkins@example.com', '', 'email', 'INV-1002'],
+    ['David Patel', '', '+447700900002', 'sms', 'JOB-8842'],
+    ['Elena Rostova', 'elena.rostova@example.com', '+447700900003', 'whatsapp', 'INV-1004'],
+    ['Marcus Vance', 'marcus.v@example.com', '+447700900004', 'auto', 'PO-9912']
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet(sampleData);
+  // Auto-width columns
+  worksheet['!cols'] = [
+    { wch: 18 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 12 },
+    { wch: 16 }
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Contacts');
+  XLSX.writeFile(workbook, 'zerix_sample_contacts.xlsx');
+  showToast('Downloaded sample Excel (.xlsx) template', 'info');
+}
+
+// Submit Bulk Import to Server API
+async function submitBulkImport() {
+  if (bulkImporting) return;
+
+  const validContacts = bulkContacts.filter(c => c.valid);
+  if (validContacts.length === 0) {
+    showToast('No valid contacts to import. Please check rows with errors.', 'error');
+    return;
+  }
+
+  const channelStrategy = document.getElementById('bulk-channel-strategy')?.value || 'auto';
+  const duplicateStrategy = document.getElementById('bulk-duplicate-strategy')?.value || 'skip';
+  const dispatchMode = document.getElementById('bulk-dispatch-mode')?.value || 'send';
+
+  const force = duplicateStrategy === 'force';
+  const queueOnly = dispatchMode === 'queue';
+
+  bulkImporting = true;
+  const submitBtn = document.getElementById('bulk-submit-btn');
+  const submitLabel = document.getElementById('bulk-submit-label');
+  const progressContainer = document.getElementById('bulk-progress-container');
+  const progressFill = document.getElementById('bulk-progress-fill');
+  const progressPercent = document.getElementById('bulk-progress-percent');
+  const progressStatus = document.getElementById('bulk-progress-status');
+
+  if (submitBtn) submitBtn.disabled = true;
+  if (submitLabel) submitLabel.textContent = 'Processing import...';
+  if (progressContainer) progressContainer.classList.remove('hidden');
+  if (progressFill) progressFill.style.width = '20%';
+  if (progressPercent) progressPercent.textContent = '20%';
+  if (progressStatus) progressStatus.textContent = `Dispatching ${validContacts.length} review requests...`;
+
+  try {
+    const payload = {
+      contacts: validContacts.map(c => ({
+        customerName: c.customerName,
+        email: c.email || undefined,
+        phone: c.phone || undefined,
+        channel: c.channel,
+        jobReference: c.jobReference || undefined,
+      })),
+      defaultChannel: channelStrategy,
+      force,
+      queueOnly,
+    };
+
+    if (progressFill) progressFill.style.width = '60%';
+    if (progressPercent) progressPercent.textContent = '60%';
+
+    const res = await fetch('/api/requests/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (progressFill) progressFill.style.width = '95%';
+    if (progressPercent) progressPercent.textContent = '95%';
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Bulk import request failed (${res.status})`);
+    }
+
+    const report = await res.json();
+
+    if (progressFill) progressFill.style.width = '100%';
+    if (progressPercent) progressPercent.textContent = '100%';
+    if (progressStatus) progressStatus.textContent = 'Import finished successfully!';
+
+    // Render Results Card
+    const resultsCard = document.getElementById('bulk-results-card');
+    const sentP = document.getElementById('bulk-res-sent');
+    const queuedP = document.getElementById('bulk-res-queued');
+    const skippedP = document.getElementById('bulk-res-skipped');
+    const failedP = document.getElementById('bulk-res-failed');
+    const timestampP = document.getElementById('bulk-results-timestamp');
+    const detailsContainer = document.getElementById('bulk-details-container');
+    const detailsList = document.getElementById('bulk-details-list');
+
+    if (sentP) sentP.textContent = report.sent || 0;
+    if (queuedP) queuedP.textContent = report.queued || 0;
+    if (skippedP) skippedP.textContent = report.skipped || 0;
+    if (failedP) failedP.textContent = (report.failed || 0) + (report.errors ? report.errors.length : 0);
+    if (timestampP) timestampP.textContent = `Finished at ${new Date().toLocaleTimeString()} · Processed ${report.total} items`;
+
+    // Populate review list for skipped or failed
+    const issues = [];
+    if (Array.isArray(report.results)) {
+      report.results.filter(r => r.status === 'skipped').forEach(r => {
+        issues.push(`<div class="p-2 bg-purple-950/30 border border-purple-900/50 rounded flex items-center justify-between text-purple-300">
+          <span>Row #${r.index} — <strong>${escapeHtml(r.customerName)}</strong> (${r.channel}): ${escapeHtml(r.reason || 'Duplicate skipped')}</span>
+          <span class="text-[10px] bg-purple-900/40 px-2 py-0.5 rounded font-mono">SKIPPED</span>
+        </div>`);
+      });
+      report.results.filter(r => r.status === 'failed').forEach(r => {
+        issues.push(`<div class="p-2 bg-rose-950/30 border border-rose-900/50 rounded flex items-center justify-between text-rose-300">
+          <span>Row #${r.index} — <strong>${escapeHtml(r.customerName)}</strong>: ${escapeHtml(r.errorMessage || 'Dispatch failed')}</span>
+          <span class="text-[10px] bg-rose-900/40 px-2 py-0.5 rounded font-mono">FAILED</span>
+        </div>`);
+      });
+    }
+    if (Array.isArray(report.errors)) {
+      report.errors.forEach(e => {
+        issues.push(`<div class="p-2 bg-rose-950/30 border border-rose-900/50 rounded flex items-center justify-between text-rose-300">
+          <span>Row #${e.index} — <strong>${escapeHtml(e.customerName)}</strong>: ${escapeHtml(e.error)}</span>
+          <span class="text-[10px] bg-rose-900/40 px-2 py-0.5 rounded font-mono">ERROR</span>
+        </div>`);
+      });
+    }
+
+    if (detailsContainer && detailsList) {
+      if (issues.length > 0) {
+        detailsContainer.classList.remove('hidden');
+        detailsList.innerHTML = issues.join('');
+      } else {
+        detailsContainer.classList.add('hidden');
+      }
+    }
+
+    if (resultsCard) {
+      resultsCard.classList.remove('hidden');
+      resultsCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    showToast(`Bulk import complete: ${report.sent} sent, ${report.queued} queued, ${report.skipped} skipped`, 'success');
+
+    // Refresh application requests & metrics
+    await fetchData(true);
+
+  } catch (err) {
+    console.error('Error submitting bulk import:', err);
+    showToast(`Bulk import failed: ${err.message}`, 'error');
+  } finally {
+    bulkImporting = false;
+    if (submitBtn) submitBtn.disabled = false;
+    setTimeout(() => {
+      if (progressContainer) progressContainer.classList.add('hidden');
+      if (progressFill) progressFill.style.width = '0%';
+    }, 1500);
+    renderBulkPreview();
+  }
+}
+
