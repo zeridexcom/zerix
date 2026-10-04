@@ -38,6 +38,23 @@ app.get(['/api/health', '/health'], (req, res) => {
   });
 });
 
+// Root API info endpoint for /api and /api/
+app.get(['/api', '/api/'], (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'OpenWA WhatsApp Gateway',
+    session: SESSION_ID,
+    phone: `+${PHONE_NUMBER}`,
+    dashboard: `http://localhost:${PORT}`,
+    endpoints: {
+      health: `http://localhost:${PORT}/api/health`,
+      sessions: `http://localhost:${PORT}/api/sessions`,
+      sendText: `POST http://localhost:${PORT}/api/sessions/${SESSION_ID}/messages/send-text`,
+      zerixApp: 'http://localhost:3001'
+    }
+  });
+});
+
 // Session list endpoint (queried by Zerix server.js via GET /api/sessions)
 app.get('/api/sessions', (req, res) => {
   res.json([

@@ -596,6 +596,24 @@ app.post('/api/requests/bulk', async (req, res) => {
   });
 });
 
+// Root API info endpoint for /api and /api/
+app.get(['/api', '/api/'], (req, res) => {
+  res.json({
+    status: 'ok',
+    app: 'Zerix Review Request Automator',
+    webDashboard: `http://localhost:${getPort()}`,
+    openwaGateway: process.env.OPENWA_API_URL || 'http://localhost:2886',
+    endpoints: {
+      requests: '/api/requests',
+      createRequest: 'POST /api/request',
+      config: '/api/config',
+      templates: '/api/templates',
+      openwaStatus: '/api/openwa/status',
+      health: '/health'
+    }
+  });
+});
+
 // List all requests
 app.get('/api/requests', (req, res) => {
   const all = [...requests.values()].sort((a, b) => b.createdAt - a.createdAt);
