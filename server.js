@@ -632,6 +632,7 @@ app.get('/r/:id', (req, res) => {
 app.get('/api/funnel/data/:id', (req, res) => {
   const { id } = req.params;
   const requestedStars = parseInt(req.query.stars, 10) || null;
+  const managerPhone = process.env.MANAGER_WHATSAPP_PHONE || process.env.ADMIN_WHATSAPP_PHONE || '';
 
   if (id === 'demo') {
     return res.json({
@@ -643,6 +644,7 @@ app.get('/api/funnel/data/:id', (req, res) => {
       jobReference: 'INV-DEMO-8842',
       phone: '+44 7700 900000',
       email: 'alex.morgan@example.com',
+      managerPhone,
     });
   }
 
@@ -657,6 +659,7 @@ app.get('/api/funnel/data/:id', (req, res) => {
       jobReference: null,
       phone: null,
       email: null,
+      managerPhone,
     });
   }
 
@@ -669,18 +672,20 @@ app.get('/api/funnel/data/:id', (req, res) => {
     jobReference: record.jobReference || null,
     phone: record.phone || null,
     email: record.email || null,
+    managerPhone,
   });
 });
 
-// Private feedback submission (Shields negative ratings from Google)
+// Private feedback submission (Shields negative ratings from Google & alerts Manager on WhatsApp)
 app.post('/api/funnel/feedback/:id', async (req, res) => {
   const { id } = req.params;
-  const { stars, feedbackText, resolutionType, customerName, phone, email } = req.body;
+  const { stars, feedbackText, resolutionType, customerName, phone, email, primaryIssue } = req.body;
 
   const feedbackRecord = {
     id: crypto.randomUUID(),
     requestId: id,
     stars: parseInt(stars, 10) || 1,
+    primaryIssue: primaryIssue || 'General Service',
     feedbackText: feedbackText || '',
     resolutionType: resolutionType || 'manager_call',
     customerName: customerName || 'Customer',
@@ -702,7 +707,43 @@ app.post('/api/funnel/feedback/:id', async (req, res) => {
     saveRequestsToDisk();
   }
 
-  // If SMTP is available, alert business management immediately
+  // 1. Dispatch WhatsApp Alert to Admin / Manager Number
+  const managerPhone = process.env.MANAGER_WHATSAPP_PHONE || process.env.ADMIN_WHATSAPP_PHONE;
+  let managerWhatsAppLink = null;
+
+  if (managerPhone) {
+    const cleanMgrPhone = managerPhone.replace(/[^0-9]/g, '');
+    const cleanCustPhone = (feedbackRecord.phone || '').replace(/[^0-9]/g, '');
+
+    const waAlertMsg = 
+`🚨 *ZERIX NEGATIVE REVIEW ALERT*
+🛡️ *A dissatisfied customer was shielded from Google!*
+
+👤 *Customer:* ${feedbackRecord.customerName}
+⭐ *Rating Given:* ${'★'.repeat(feedbackRecord.stars)}${'☆'.repeat(5 - feedbackRecord.stars)} (${feedbackRecord.stars}/5 Stars)
+⚠️ *Primary Issue:* ${feedbackRecord.primaryIssue}
+📞 *Contact:* ${feedbackRecord.phone || feedbackRecord.email || 'None provided'}
+🛠️ *Desired Fix:* ${feedbackRecord.resolutionType}
+
+📝 *Customer Statement:*
+"${feedbackRecord.feedbackText || '(No comments provided)'}"
+
+👉 *Call or WhatsApp customer now to resolve:*
+${cleanCustPhone ? `https://wa.me/${cleanCustPhone}` : 'No phone provided'}`;
+
+    managerWhatsAppLink = `https://wa.me/${cleanMgrPhone}?text=${encodeURIComponent(waAlertMsg)}`;
+
+    try {
+      if (process.env.OPENWA_API_KEY && process.env.OPENWA_URL) {
+        await sendWhatsAppMessage(cleanMgrPhone, waAlertMsg);
+        console.log(`[Shield] Alert sent via OpenWA to manager WhatsApp: +${cleanMgrPhone}`);
+      }
+    } catch (waErr) {
+      console.warn(`[Shield] OpenWA manager dispatch error (wa.me link ready):`, waErr.message);
+    }
+  }
+
+  // 2. Dispatch Email Alert if SMTP is configured
   if (transporter && (process.env.SMTP_FROM || process.env.SMTP_USER)) {
     try {
       const recipient = process.env.NOTIFICATION_EMAIL || process.env.SMTP_FROM || process.env.SMTP_USER;
@@ -719,6 +760,7 @@ app.post('/api/funnel/feedback/:id', async (req, res) => {
             <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
               <tr><td style="padding: 6px 0; color: #64748b;">Customer:</td><td style="font-weight: bold; color: #0f172a;">${feedbackRecord.customerName}</td></tr>
               <tr><td style="padding: 6px 0; color: #64748b;">Rating:</td><td style="color: #e11d48; font-weight: bold;">${'★'.repeat(feedbackRecord.stars)}${'☆'.repeat(5 - feedbackRecord.stars)} (${feedbackRecord.stars}/5 Stars)</td></tr>
+              <tr><td style="padding: 6px 0; color: #64748b;">Primary Issue:</td><td style="font-weight: bold; color: #b91c1c;">${feedbackRecord.primaryIssue}</td></tr>
               <tr><td style="padding: 6px 0; color: #64748b;">Phone:</td><td style="font-family: monospace;">${feedbackRecord.phone || 'N/A'}</td></tr>
               <tr><td style="padding: 6px 0; color: #64748b;">Email:</td><td style="font-family: monospace;">${feedbackRecord.email || 'N/A'}</td></tr>
               <tr><td style="padding: 6px 0; color: #64748b;">Preferred Resolution:</td><td style="font-weight: 500;">${feedbackRecord.resolutionType}</td></tr>
@@ -735,7 +777,11 @@ app.post('/api/funnel/feedback/:id', async (req, res) => {
     }
   }
 
-  res.json({ success: true, message: 'Private feedback received and delivered to management' });
+  res.json({
+    success: true,
+    message: 'Private feedback received and delivered to management',
+    managerWhatsAppLink,
+  });
 });
 
 // Track conversion event (User clicked copy & open Google)
@@ -963,18 +1009,20 @@ app.get('/api/config', (req, res) => {
     twilioFrom: process.env.TWILIO_WHATSAPP_FROM || '',
     metaConfigured,
     metaPhoneId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+    managerPhone: process.env.MANAGER_WHATSAPP_PHONE || process.env.ADMIN_WHATSAPP_PHONE || '',
     nodeVersion: process.version,
     platform: process.platform,
   });
 });
 
 // Update Server Config (saves to memory and persists to .env)
-app.put('/api/config', (req, res) => {
+const handleConfigUpdate = (req, res) => {
   const {
     businessName,
     reviewUrl,
     followUpDays,
     port,
+    managerPhone,
     smtpHost,
     smtpPort,
     smtpSecure,
@@ -1000,6 +1048,10 @@ app.put('/api/config', (req, res) => {
   if (reviewUrl !== undefined) {
     process.env.GOOGLE_REVIEW_URL = reviewUrl;
     envUpdates.GOOGLE_REVIEW_URL = reviewUrl;
+  }
+  if (managerPhone !== undefined) {
+    process.env.MANAGER_WHATSAPP_PHONE = managerPhone;
+    envUpdates.MANAGER_WHATSAPP_PHONE = managerPhone;
   }
   if (followUpDays !== undefined) {
     process.env.FOLLOW_UP_DAYS = String(followUpDays);
@@ -1088,7 +1140,10 @@ app.put('/api/config', (req, res) => {
     success: true,
     message: 'Configuration saved and updated successfully!',
   });
-});
+};
+
+app.put('/api/config', handleConfigUpdate);
+app.post('/api/config', handleConfigUpdate);
 
 
 // Check OpenWA Connection & Sessions

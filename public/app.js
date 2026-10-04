@@ -327,6 +327,9 @@ async function fetchConfig() {
     const cfgDays = document.getElementById('cfg-followup-days');
     if (cfgDays) cfgDays.value = followUpDays;
 
+    const cfgMgr = document.getElementById('cfg-manager-phone');
+    if (cfgMgr) cfgMgr.value = serverConfig.managerPhone || '';
+
     const cfgWaDisp = document.getElementById('cfg-openwa-url-disp');
     if (cfgWaDisp) cfgWaDisp.textContent = serverConfig.openwaUrl || 'http://localhost:2886';
 
@@ -1107,6 +1110,7 @@ async function handleConfigSubmit(e) {
   const businessName = document.getElementById('cfg-biz-name')?.value.trim();
   const reviewUrl = document.getElementById('cfg-review-url')?.value.trim();
   const followUpDays = parseInt(document.getElementById('cfg-followup-days')?.value, 10) || 3;
+  const managerPhone = document.getElementById('cfg-manager-phone')?.value.trim();
 
   try {
     const res = await fetch('/api/config', {
@@ -1116,6 +1120,7 @@ async function handleConfigSubmit(e) {
         businessName,
         reviewUrl,
         followUpDays,
+        managerPhone,
       }),
     });
 
@@ -1331,6 +1336,7 @@ function renderFeedbackTable() {
         </td>
         <td class="px-3 py-3">${starBadge}</td>
         <td class="px-3 py-3 max-w-xs">
+          ${fb.primaryIssue ? `<div class="inline-block px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 text-[10px] font-bold mb-1 border border-rose-200">${escapeHtml(fb.primaryIssue)}</div>` : ''}
           <p class="text-xs text-[#111b21] leading-relaxed line-clamp-3">${escapeHtml(commentStr)}</p>
         </td>
         <td class="px-3 py-3 font-semibold text-slate-700 text-xs">

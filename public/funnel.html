@@ -170,39 +170,70 @@
       <!-- Feedback Form -->
       <form id="negative-feedback-form" onsubmit="submitPrivateFeedback(event)" class="space-y-4">
         
-        <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1" for="feedback-text">
-            What went wrong or could we have done better? <span class="text-rose-400">*</span>
+        <!-- Question 1: What was the primary issue? -->
+        <div class="space-y-1.5">
+          <label class="block text-xs font-semibold text-slate-300">
+            1. What was the main issue with your service? <span class="text-rose-400">*</span>
           </label>
-          <textarea id="feedback-text" required rows="4" placeholder="Please share details about your experience..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-rose-500 transition leading-relaxed"></textarea>
+          <div class="grid grid-cols-2 gap-1.5" id="issue-chips-container">
+            <button type="button" onclick="selectIssueChip(this, '⏱️ Delayed / Late Arrival')" class="issue-chip text-[11px] bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 p-2.5 rounded-lg text-left transition flex items-center gap-1.5">
+              <span>⏱️ Delayed / Late</span>
+            </button>
+            <button type="button" onclick="selectIssueChip(this, '🔧 Service Quality / Workmanship')" class="issue-chip text-[11px] bg-rose-950/50 text-white border border-rose-500 p-2.5 rounded-lg text-left transition flex items-center gap-1.5">
+              <span>🔧 Service Quality</span>
+            </button>
+            <button type="button" onclick="selectIssueChip(this, '💰 Pricing / Unexpected Charges')" class="issue-chip text-[11px] bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 p-2.5 rounded-lg text-left transition flex items-center gap-1.5">
+              <span>💰 Pricing / Fees</span>
+            </button>
+            <button type="button" onclick="selectIssueChip(this, '💬 Staff Attitude / Communication')" class="issue-chip text-[11px] bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 p-2.5 rounded-lg text-left transition flex items-center gap-1.5">
+              <span>💬 Staff Attitude</span>
+            </button>
+            <button type="button" onclick="selectIssueChip(this, '🧹 Mess Left / Unclean')" class="issue-chip text-[11px] bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 p-2.5 rounded-lg text-left transition flex items-center gap-1.5">
+              <span>🧹 Mess Left Behind</span>
+            </button>
+            <button type="button" onclick="selectIssueChip(this, '❓ Incomplete Work')" class="issue-chip text-[11px] bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 p-2.5 rounded-lg text-left transition flex items-center gap-1.5">
+              <span>❓ Incomplete Work</span>
+            </button>
+          </div>
+          <input type="hidden" id="selected-issue-input" value="🔧 Service Quality / Workmanship" />
         </div>
 
+        <!-- Question 2: Explanation -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1" for="feedback-text">
+            2. Tell us what happened so management can investigate: <span class="text-rose-400">*</span>
+          </label>
+          <textarea id="feedback-text" required rows="3" placeholder="Please share details about your experience..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-rose-500 transition leading-relaxed"></textarea>
+        </div>
+
+        <!-- Question 3: Desired resolution -->
         <div>
           <label class="block text-xs font-semibold text-slate-300 mb-1" for="feedback-resolution">
-            How would you like us to resolve this?
+            3. How can our management team make this right for you?
           </label>
-          <select id="feedback-resolution" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-rose-500">
-            <option value="manager_call" selected>📞 Request a call from the business owner / manager</option>
-            <option value="fix_issue">🛠️ Send a senior technician to re-inspect and fix the work</option>
+          <select id="feedback-resolution" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-rose-500">
+            <option value="manager_call" selected>📞 Call from the business owner / manager</option>
+            <option value="fix_issue">🛠️ Free re-inspection / fix by a senior technician</option>
             <option value="refund_credit">💰 Discuss a refund or discount adjustment</option>
-            <option value="internal_feedback">📝 Just wanted to share internal feedback</option>
+            <option value="internal_feedback">📝 Just sharing internal feedback</option>
           </select>
         </div>
 
+        <!-- Contact info -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-[11px] font-medium text-slate-400 mb-1" for="feedback-phone">Your Phone</label>
+            <label class="block text-[11px] font-medium text-slate-400 mb-1" for="feedback-phone">Your Best Phone Number</label>
             <input type="tel" id="feedback-phone" placeholder="+44..." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-rose-500">
           </div>
           <div>
-            <label class="block text-[11px] font-medium text-slate-400 mb-1" for="feedback-email">Your Email</label>
+            <label class="block text-[11px] font-medium text-slate-400 mb-1" for="feedback-email">Your Email (Optional)</label>
             <input type="email" id="feedback-email" placeholder="you@example.com" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-rose-500">
           </div>
         </div>
 
-        <button type="submit" id="feedback-submit-btn" class="w-full py-3 px-4 bg-rose-600 hover:bg-rose-500 active:scale-[0.99] text-white font-bold text-xs rounded-xl shadow-lg shadow-rose-600/25 transition flex items-center justify-center gap-2">
+        <button type="submit" id="feedback-submit-btn" class="w-full py-3.5 px-4 bg-rose-600 hover:bg-rose-500 active:scale-[0.99] text-white font-bold text-xs rounded-xl shadow-lg shadow-rose-600/25 transition flex items-center justify-center gap-2">
           <i class="fa-solid fa-paper-plane text-xs"></i>
-          <span>Send Directly to Management</span>
+          <span>Send Privately to Management</span>
         </button>
 
       </form>
@@ -217,11 +248,21 @@
         <i class="fa-solid fa-check"></i>
       </div>
       <div class="space-y-1.5">
-        <h3 class="text-lg font-bold text-slate-100">Message Delivered</h3>
+        <h3 class="text-lg font-bold text-slate-100">Message Delivered to Management</h3>
         <p class="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
-          Thank you, <span class="customer-name-text font-semibold">there</span>. Your feedback has been forwarded directly to the management team at <strong class="brand-name-text text-white">our company</strong>. We will review this and reach out to you promptly.
+          Thank you, <span class="customer-name-text font-semibold">there</span>. Your grievance has been securely forwarded to our management team. We have all details and will reach out to you promptly to resolve this.
         </p>
       </div>
+
+      <!-- Instant Manager WhatsApp Contact Box -->
+      <div id="manager-wa-cta-box" class="hidden pt-2 border-t border-slate-800 space-y-2">
+        <p class="text-[11px] text-slate-400 font-medium">Want to speak with the manager right away?</p>
+        <a id="manager-wa-chat-btn" href="#" target="_blank" class="w-full py-3 px-4 bg-[#25d366] hover:bg-[#20ba5a] text-[#111b21] font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-2">
+          <i class="fa-brands fa-whatsapp text-lg"></i>
+          <span>Chat with Manager on WhatsApp</span>
+        </a>
+      </div>
+
       <p class="text-[11px] text-slate-500">Thank you for giving us the opportunity to make things right.</p>
     </div>
 
@@ -335,8 +376,30 @@
       }
     }
 
+    let selectedPrimaryIssue = '🔧 Service Quality / Workmanship';
+
+    function selectIssueChip(btn, issueText) {
+      selectedPrimaryIssue = issueText;
+      const hidden = document.getElementById('selected-issue-input');
+      if (hidden) hidden.value = issueText;
+
+      document.querySelectorAll('.issue-chip').forEach(b => {
+        b.className = 'issue-chip text-[11px] bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 p-2.5 rounded-lg text-left transition flex items-center gap-1.5';
+      });
+
+      btn.className = 'issue-chip text-[11px] bg-rose-950/50 text-white border border-rose-500 p-2.5 rounded-lg text-left transition flex items-center gap-1.5 font-semibold';
+    }
+
     function showNegativeView() {
       document.getElementById('view-negative').classList.remove('hidden');
+      const phoneInput = document.getElementById('feedback-phone');
+      if (phoneInput && !phoneInput.value && funnelData.phone) {
+        phoneInput.value = funnelData.phone;
+      }
+      const emailInput = document.getElementById('feedback-email');
+      if (emailInput && !emailInput.value && funnelData.email) {
+        emailInput.value = funnelData.email;
+      }
     }
 
     function addReviewChip(text) {
@@ -432,15 +495,16 @@
 
       if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin"></i> Sending to management...';
+        submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin"></i> Alerting management...';
       }
 
       try {
-        await fetch(`/api/funnel/feedback/${requestId}`, {
+        const res = await fetch(`/api/funnel/feedback/${requestId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             stars: selectedStars,
+            primaryIssue: selectedPrimaryIssue,
             feedbackText,
             resolutionType,
             customerName: funnelData.customerName,
@@ -449,13 +513,26 @@
           })
         });
 
+        const data = await res.json();
+
         document.getElementById('view-negative').classList.add('hidden');
         document.getElementById('view-thankyou').classList.remove('hidden');
+
+        // Check if manager WhatsApp CTA can be activated
+        const mgrLink = data.managerWhatsAppLink || (funnelData.managerPhone ? `https://wa.me/${funnelData.managerPhone.replace(/[^0-9]/g, '')}` : null);
+        if (mgrLink) {
+          const ctaBox = document.getElementById('manager-wa-cta-box');
+          const ctaBtn = document.getElementById('manager-wa-chat-btn');
+          if (ctaBox && ctaBtn) {
+            ctaBtn.href = mgrLink;
+            ctaBox.classList.remove('hidden');
+          }
+        }
       } catch (err) {
         alert('Failed to deliver message. Please try again.');
         if (submitBtn) {
           submitBtn.disabled = false;
-          submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane text-xs"></i> Send Directly to Management';
+          submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane text-xs"></i> Send Privately to Management';
         }
       }
     }

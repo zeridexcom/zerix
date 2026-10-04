@@ -8,10 +8,13 @@ Thank you for choosing {{businessName}}! How was your experience today? Tap your
 ⭐⭐⭐⭐ Good (4/5)
 👉 {{star4Url}}
 
-⭐⭐⭐ Average (3/5)
+⭐⭐⭐ Okay / Fair (3/5)
 👉 {{star3Url}}
 
-⭐ Had an issue (1/5)
+⭐⭐ Poor (2/5)
+👉 {{star2Url}}
+
+⭐ Very Poor (1/5)
 👉 {{star1Url}}
 
 Thank you!
