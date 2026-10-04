@@ -974,6 +974,7 @@ function copyWameLink() {
 // Submit Single Dispatch (Handles both Online & Offline Resilient mode)
 async function submitDispatchForm() {
   const nameInput = document.getElementById('composer-name');
+  const phoneInput = document.getElementById('composer-phone');
   const jobInput = document.getElementById('composer-job-ref');
   const sendBtn = document.getElementById('composer-send-btn');
 
@@ -982,7 +983,7 @@ async function submitDispatchForm() {
   const jobReference = jobInput?.value.trim() || null;
 
   if (!customerName || !contact) {
-    showToast('Please enter customer name and contact details', 'error');
+    showToast('Please enter customer name and phone number', 'error');
     return;
   }
 
@@ -1002,9 +1003,12 @@ async function submitDispatchForm() {
   const cleanDigits = phone ? phone.replace(/[^0-9]/g, '') : '';
   const bizName = serverConfig.businessName || 'zerix';
 
+  let res = null;
+  let data = null;
+
   try {
     // Attempt backend dispatch
-    const res = await fetch('/api/request', {
+    res = await fetch('/api/request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1018,58 +1022,10 @@ async function submitDispatchForm() {
       signal: AbortSignal.timeout(15000),
     });
 
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to dispatch request');
-
-    updateServerStatusUI(true);
-
-    const dispatchedRecord = data.results?.[0] || data.firstRecord || {
-      id: data.results?.[0]?.id || 'demo',
-      customerName,
-      phone,
-      email,
-      channel: currentChannel,
-      jobReference,
-      provider: data.provider || (openwaConnected ? 'openwa' : 'direct'),
-    };
-
-    // Update Live Simulator Preview with the dispatched record
-    updateSimulatorPreview(dispatchedRecord);
-
-    // Show inline success banner in the composer
-    const successBanner = document.getElementById('composer-dispatch-success');
-    const successTitle = document.getElementById('dispatch-success-title');
-    const successDesc = document.getElementById('dispatch-success-desc');
-    const manualBtn = document.getElementById('dispatch-manual-wame-btn');
-
-    if (successBanner) {
-      if (dispatchedRecord.provider === 'openwa' || openwaConnected) {
-        if (successTitle) successTitle.textContent = `Dispatched directly to +${cleanDigits} via WhatsApp!`;
-        if (successDesc) successDesc.textContent = `Automated delivery succeeded! The 5-star rating invite was sent directly to customer WhatsApp in background. Zero manual typing!`;
-        if (manualBtn && data.whatsappLink) {
-          manualBtn.href = data.whatsappLink;
-          manualBtn.textContent = 'Open in WhatsApp Web anyway →';
-        }
-      } else {
-        if (successTitle) successTitle.textContent = `WhatsApp Permission Needed for +${cleanDigits}`;
-        if (successDesc) successDesc.innerHTML = `Your device is not linked to WhatsApp yet. <button type="button" onclick="openWhatsAppQrModal()" class="font-bold underline text-amber-800">Scan QR Code</button> to enable direct background dispatch, or tap below to send via WhatsApp Web now:`;
-        if (manualBtn && data.whatsappLink) {
-          manualBtn.href = data.whatsappLink;
-          manualBtn.textContent = '🚀 Send via WhatsApp Web Now →';
-        }
-      }
-      successBanner.classList.remove('hidden');
-    }
-
-    if (dispatchedRecord.provider === 'openwa' || openwaConnected) {
-      showToast(`✅ Dispatched directly to ${customerName} (+${cleanDigits}) via WhatsApp!`, 'success');
-    } else {
-      showToast(`Saved request for ${customerName}. Scan QR in Settings or send via WhatsApp Web!`, 'info');
-    }
-
-  } catch (err) {
-    // Backend is offline: Run resilient local fallback
-    console.warn('Backend unavailable, saving in Local Resilient Mode:', err.message);
+    data = await res.json().catch(() => ({}));
+  } catch (networkErr) {
+    // True network failure reaching backend
+    console.warn('Backend unavailable, saving in Local Resilient Mode:', networkErr.message);
     updateServerStatusUI(false);
 
     const offlineRecord = {
@@ -1094,19 +1050,83 @@ async function submitDispatchForm() {
     updateSimulatorPreview(offlineRecord);
     showToast(`Saved locally (Offline Mode).`, 'warning');
 
-  } finally {
     if (sendBtn) {
       sendBtn.disabled = false;
       sendBtn.classList.remove('opacity-70');
     }
-
-    if (nameInput) nameInput.value = '';
-    if (contactInput) contactInput.value = '';
-    if (jobInput) jobInput.value = '';
-
     updateMetrics();
     renderLedgerTable();
+    return;
   }
+
+  // If server responded with ANY HTTP status, the backend server is reachable and ONLINE!
+  updateServerStatusUI(true);
+
+  if (!res || !res.ok) {
+    showToast(data?.error || `Failed to dispatch request (${res?.status || 500})`, 'error');
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.classList.remove('opacity-70');
+    }
+    return;
+  }
+
+  const dispatchedRecord = data.results?.[0] || data.firstRecord || data || {
+    id: data.id || 'demo',
+    customerName,
+    phone,
+    email,
+    channel: currentChannel,
+    jobReference,
+    provider: data.provider || (openwaConnected ? 'openwa' : 'direct'),
+    whatsappLink: data.whatsappLink || (cleanDigits ? `https://wa.me/${cleanDigits}` : null),
+  };
+
+  // Update Live Simulator Preview with the dispatched record
+  updateSimulatorPreview(dispatchedRecord);
+
+  // Show inline success banner in the composer
+  const successBanner = document.getElementById('composer-dispatch-success');
+  const successTitle = document.getElementById('dispatch-success-title');
+  const successDesc = document.getElementById('dispatch-success-desc');
+  const manualBtn = document.getElementById('dispatch-manual-wame-btn');
+
+  if (successBanner) {
+    if (dispatchedRecord.provider === 'openwa' || openwaConnected) {
+      if (successTitle) successTitle.textContent = `Dispatched directly to +${cleanDigits} via WhatsApp!`;
+      if (successDesc) successDesc.textContent = `Automated delivery succeeded! The 5-star rating invite was sent directly to customer WhatsApp in background. Zero manual typing!`;
+      if (manualBtn && data.whatsappLink) {
+        manualBtn.href = data.whatsappLink;
+        manualBtn.textContent = 'Open in WhatsApp Web anyway →';
+      }
+    } else {
+      if (successTitle) successTitle.textContent = `WhatsApp Permission Needed for +${cleanDigits}`;
+      if (successDesc) successDesc.innerHTML = `Your device is not linked to WhatsApp yet. <button type="button" onclick="openWhatsAppQrModal()" class="font-bold underline text-amber-800">Scan QR Code</button> to enable direct background dispatch, or tap below to send via WhatsApp Web now:`;
+      if (manualBtn && data.whatsappLink) {
+        manualBtn.href = data.whatsappLink;
+        manualBtn.textContent = '🚀 Send via WhatsApp Web Now →';
+      }
+    }
+    successBanner.classList.remove('hidden');
+  }
+
+  if (dispatchedRecord.provider === 'openwa' || openwaConnected) {
+    showToast(`✅ Dispatched directly to ${customerName} (+${cleanDigits}) via WhatsApp!`, 'success');
+  } else {
+    showToast(`Saved request for ${customerName}. Click below to send via WhatsApp Web!`, 'info');
+  }
+
+  if (sendBtn) {
+    sendBtn.disabled = false;
+    sendBtn.classList.remove('opacity-70');
+  }
+
+  if (nameInput) nameInput.value = '';
+  if (phoneInput) phoneInput.value = '';
+  if (jobInput) jobInput.value = '';
+
+  updateMetrics();
+  await fetchData();
 }
 
 function handleDispatchSubmit(e) {
