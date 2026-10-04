@@ -565,6 +565,21 @@
               <p class="text-xs text-[#667781] mt-0.5">Dispatches personalized invitation with your Google review link.</p>
             </div>
 
+            <!-- WhatsApp Gateway Connection & Permission Indicator -->
+            <div id="composer-gateway-status-card" class="p-3 rounded-xl border border-blue-200 bg-blue-50/70 flex items-center justify-between text-xs transition-all">
+              <div class="flex items-center gap-2.5">
+                <span id="composer-gw-dot" class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+                <div>
+                  <span id="composer-gw-title" class="font-bold text-[#111b21]">WhatsApp Permission Required</span>
+                  <p id="composer-gw-desc" class="text-[11px] text-[#54656f]">Scan QR code with your phone to enable direct background dispatch</p>
+                </div>
+              </div>
+              <button type="button" id="composer-gw-btn" onclick="openWhatsAppQrModal()" class="px-3 py-1.5 rounded-lg bg-[#008069] hover:bg-[#006a57] text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-[15px]">qr_code_scanner</span>
+                <span id="composer-gw-btn-text">Scan QR</span>
+              </button>
+            </div>
+
             <!-- Channel Selector -->
             <div>
               <label class="block text-xs font-semibold text-[#111b21] mb-1.5">Dispatch Channel</label>
@@ -906,27 +921,39 @@
             <div class="flex items-center gap-2">
               <span class="material-symbols-outlined text-[#008069] text-[22px]">hub</span>
               <div>
-                <h3 class="font-bold text-sm text-[#111b21]">OpenWA WhatsApp Gateway Settings</h3>
-                <p class="text-xs text-[#667781]">Port 2886 Docker or Cloud Gateway Integration.</p>
+                <h3 class="font-bold text-sm text-[#111b21]">WhatsApp Multi-Device Gateway</h3>
+                <p class="text-xs text-[#667781]">Port 2886 Local Baileys Gateway — Automated Background WhatsApp Delivery.</p>
               </div>
             </div>
-            <button onclick="checkOpenWAStatus(true)" class="px-3 py-1.5 rounded-lg bg-[#f0f2f5] hover:bg-[#e9edef] text-[#111b21] text-xs font-semibold border border-[#e9edef] transition-colors flex items-center gap-1">
-              <span class="material-symbols-outlined text-[15px]">refresh</span> Re-check Status
-            </button>
+            <div class="flex items-center gap-2">
+              <button onclick="openWhatsAppQrModal()" class="px-3 py-1.5 rounded-lg bg-[#008069] hover:bg-[#006a57] text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+                <span class="material-symbols-outlined text-[15px]">qr_code_scanner</span>
+                <span id="cfg-qr-btn-text">Link Device (Scan QR)</span>
+              </button>
+              <button onclick="checkOpenWAStatus(true)" class="px-3 py-1.5 rounded-lg bg-[#f0f2f5] hover:bg-[#e9edef] text-[#111b21] text-xs font-semibold border border-[#e9edef] transition-colors flex items-center gap-1">
+                <span class="material-symbols-outlined text-[15px]">refresh</span>
+              </button>
+            </div>
           </div>
 
           <div class="p-3 bg-[#efeae2]/40 rounded-lg border border-[#e9edef] text-xs space-y-2">
             <div class="flex justify-between py-1 border-b border-[#e9edef]">
               <span class="text-[#667781]">Gateway URL:</span>
-              <span id="cfg-openwa-url-disp" class="font-mono font-bold text-[#111b21]">http://localhost:2886</span>
+              <span class="font-mono font-bold text-[#111b21]">
+                <a href="http://localhost:2886" target="_blank" class="text-[#008069] underline">http://localhost:2886 ↗</a>
+              </span>
             </div>
             <div class="flex justify-between py-1 border-b border-[#e9edef]">
-              <span class="text-[#667781]">Live Status:</span>
+              <span class="text-[#667781]">WhatsApp Connection:</span>
               <span id="cfg-openwa-status-disp" class="font-bold text-amber-600">Checking...</span>
             </div>
+            <div class="flex justify-between py-1 border-b border-[#e9edef]">
+              <span class="text-[#667781]">Permission Mechanism:</span>
+              <span class="font-semibold text-slate-700">WhatsApp Multi-Device Linked Device (QR Scan)</span>
+            </div>
             <div class="flex justify-between py-1">
-              <span class="text-[#667781]">Fallback Channel:</span>
-              <span class="font-bold text-[#008069]">Direct WhatsApp (wa.me)</span>
+              <span class="text-[#667781]">Fallback Mode:</span>
+              <span class="font-bold text-[#008069]">Direct WhatsApp (wa.me 1-click links)</span>
             </div>
           </div>
         </div>
@@ -1005,6 +1032,78 @@
         <button onclick="closeInspectModal()" class="px-4 py-1.5 rounded-lg bg-white border border-[#e9edef] text-xs font-semibold hover:bg-slate-50 transition-colors">
           Close
         </button>
+      </div>
+    </div>
+  <!-- WHATSAPP PAIRING & QR CODE PERMISSION MODAL -->
+  <div id="whatsapp-qr-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-[#e9edef] animate-fade">
+      <div class="p-4 bg-[#008069] text-white flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-[22px]">qr_code_scanner</span>
+          <div>
+            <h3 class="font-bold text-sm">Link WhatsApp Gateway</h3>
+            <p class="text-[11px] text-white/80">Authorize local background sending</p>
+          </div>
+        </div>
+        <button onclick="closeWhatsAppQrModal()" class="text-white/80 hover:text-white p-1 rounded-lg hover:bg-black/10">
+          <span class="material-symbols-outlined text-[20px]">close</span>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-4 text-center">
+        <!-- Loading State -->
+        <div id="qr-modal-loading" class="py-8">
+          <div class="w-10 h-10 border-4 border-[#008069] border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+          <p class="text-xs text-[#667781]">Generating secure pairing QR code...</p>
+        </div>
+
+        <!-- Connected State -->
+        <div id="qr-modal-connected" class="hidden py-6 space-y-3">
+          <div class="w-14 h-14 bg-emerald-100 text-[#008069] rounded-full flex items-center justify-center mx-auto text-2xl font-bold">
+            ✓
+          </div>
+          <h4 class="font-bold text-[#111b21] text-base">WhatsApp Linked & Ready!</h4>
+          <p id="qr-modal-connected-phone" class="text-xs font-mono text-[#008069] font-bold">+91 9686868973</p>
+          <p class="text-xs text-[#667781] leading-relaxed">
+            Direct background dispatch is active. Review requests will send instantly to customers without opening WhatsApp Web.
+          </p>
+          <div class="pt-2 flex justify-center gap-2">
+            <button onclick="closeWhatsAppQrModal()" class="px-4 py-2 rounded-lg bg-[#008069] hover:bg-[#006a57] text-white text-xs font-bold transition">
+              Done
+            </button>
+            <button onclick="unlinkWhatsAppDevice()" class="px-3 py-2 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-semibold transition">
+              Unlink / Switch Number
+            </button>
+          </div>
+        </div>
+
+        <!-- QR Scan State -->
+        <div id="qr-modal-scan-box" class="hidden space-y-4">
+          <div class="p-3 bg-[#efeae2]/50 rounded-xl border border-[#e9edef] inline-block shadow-inner">
+            <img id="qr-modal-img" src="" alt="Scan WhatsApp QR" class="w-56 h-56 mx-auto block rounded-lg shadow-sm" />
+          </div>
+
+          <div class="text-left bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1.5 text-slate-700">
+            <div class="font-bold text-[#111b21] mb-1 flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px] text-[#008069]">phone_android</span>
+              <span>How to scan:</span>
+            </div>
+            <p>1. Open <strong>WhatsApp</strong> on your phone</p>
+            <p>2. Tap <strong>Settings</strong> (or <strong>⋮ 3 dots</strong> on Android) &rarr; <strong>Linked Devices</strong></p>
+            <p>3. Tap <strong>Link a Device</strong></p>
+            <p>4. Point your camera at this QR code</p>
+          </div>
+
+          <div class="flex items-center justify-between text-[11px] text-[#667781] pt-1">
+            <span class="flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+              Auto-detects when scanned
+            </span>
+            <button onclick="refreshQrCode()" class="text-[#008069] font-bold hover:underline flex items-center gap-1">
+              <span class="material-symbols-outlined text-[13px]">refresh</span> Refresh QR
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

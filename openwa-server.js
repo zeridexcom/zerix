@@ -1,6 +1,14 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const pino = require('pino');
+const QRCode = require('qrcode');
+const {
+  default: makeWASocket,
+  useMultiFileAuthState,
+  DisconnectReason,
+  Browsers,
+} = require('@whiskeysockets/baileys');
 require('dotenv').config();
 
 const app = express();
@@ -8,14 +16,24 @@ const PORT = process.env.OPENWA_PORT || 2886;
 const SESSION_ID = process.env.OPENWA_SESSION_ID || 'e1519353-c186-4c0c-ac2b-90e5b01090a7';
 const EXPECTED_KEY = process.env.OPENWA_API_KEY || 'owa_k1_938da88d4539053105b4cffcdfa38005b0fd4d1f1fa505e79147c0d6690cf9b6';
 const BUSINESS_NAME = process.env.BUSINESS_NAME || 'zerix';
-const PHONE_NUMBER = process.env.OPENWA_PHONE || '919686868973';
-const PUSH_NAME = `${BUSINESS_NAME.charAt(0).toUpperCase() + BUSINESS_NAME.slice(1)} WhatsApp Gateway`;
+const AUTH_DIR = path.join(__dirname, 'whatsapp_session');
 
 app.use(express.json());
 
-// In-memory message dispatch log
+// In-memory message dispatch log & state
 const sentMessages = [];
-const startTime = new Date().toISOString();
+let sock = null;
+let currentQr = null;
+let currentQrDataUrl = null;
+let connectionStatus = 'initializing'; // 'initializing', 'scan_qr', 'connected', 'reconnecting', 'disconnected'
+let connectedPhone = null;
+let pushName = `${BUSINESS_NAME.charAt(0).toUpperCase() + BUSINESS_NAME.slice(1)} WhatsApp Gateway`;
+let connectionError = null;
+
+// Ensure auth dir exists
+if (!fs.existsSync(AUTH_DIR)) {
+  fs.mkdirSync(AUTH_DIR, { recursive: true });
+}
 
 // Middleware for API key validation (optional in dev, strict if provided)
 app.use((req, res, next) => {
@@ -26,32 +44,164 @@ app.use((req, res, next) => {
   next();
 });
 
+// Initialize Baileys WhatsApp Connection
+async function connectToWhatsApp() {
+  try {
+    if (sock) {
+      try {
+        sock.ev.removeAllListeners();
+        sock.ws?.close();
+      } catch (e) {}
+      sock = null;
+    }
+
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+
+    sock = makeWASocket({
+      auth: state,
+      logger: pino({ level: 'silent' }),
+      browser: Browsers.windows('Desktop'),
+      connectTimeoutMs: 45000,
+      keepAliveIntervalMs: 25000,
+      defaultQueryTimeoutMs: 45000,
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
+
+      if (qr) {
+        currentQr = qr;
+        try {
+          currentQrDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 6 });
+        } catch (e) {
+          console.error('[OpenWA] Failed to generate QR data URL:', e.message);
+        }
+        connectionStatus = 'scan_qr';
+        console.log('\n\x1b[33m[OpenWA] 📱 WhatsApp QR Code generated! Scan it with WhatsApp (Settings > Linked Devices > Link a Device)\x1b[0m');
+      }
+
+      if (connection === 'close') {
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        connectionError = lastDisconnect?.error?.message || 'Connection closed';
+
+        console.log(`[OpenWA] Connection closed (${statusCode || 'unknown'}). Should reconnect: ${shouldReconnect}`);
+
+        if (statusCode === DisconnectReason.loggedOut) {
+          connectionStatus = 'logged_out';
+          currentQr = null;
+          currentQrDataUrl = null;
+          connectedPhone = null;
+          try {
+            fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+            fs.mkdirSync(AUTH_DIR, { recursive: true });
+          } catch (e) {
+            console.error('[OpenWA] Failed to clear session dir:', e.message);
+          }
+          console.log('[OpenWA] Logged out. Restarting fresh connection...');
+          setTimeout(() => {
+            connectToWhatsApp().catch(e => console.error('[OpenWA] Connect error:', e.message));
+          }, 3000);
+        } else {
+          connectionStatus = 'reconnecting';
+          setTimeout(() => {
+            connectToWhatsApp().catch(e => console.error('[OpenWA] Reconnect error:', e.message));
+          }, 5000);
+        }
+      } else if (connection === 'open') {
+        connectionStatus = 'connected';
+        connectionError = null;
+        currentQr = null;
+        currentQrDataUrl = null;
+
+        const rawJid = sock.user?.id || '';
+        connectedPhone = rawJid.split(':')[0] || rawJid.split('@')[0] || '';
+        pushName = sock.user?.name || `${BUSINESS_NAME.toUpperCase()} Official`;
+
+        console.log(`\n\x1b[32m✔ [OpenWA] Successfully linked to WhatsApp!\x1b[0m`);
+        console.log(`  • Connected Phone: +${connectedPhone}`);
+        console.log(`  • Profile Name: ${pushName}\n`);
+      }
+    });
+
+    sock.ev.on('messages.upsert', (m) => {
+      // Future incoming message handler if needed
+    });
+
+  } catch (err) {
+    console.error('[OpenWA Init Error]', err);
+    connectionStatus = 'error';
+    connectionError = err.message;
+    setTimeout(connectToWhatsApp, 5000);
+  }
+}
+
+// Start connection on launch
+connectToWhatsApp();
+
 // Health check endpoint
 app.get(['/api/health', '/health'], (req, res) => {
   res.json({
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
-    service: 'OpenWA WhatsApp Gateway',
+    service: 'OpenWA WhatsApp Gateway (Baileys Engine)',
     session: SESSION_ID,
-    phone: PHONE_NUMBER,
+    connected: connectionStatus === 'connected',
+    connectionStatus,
+    phone: connectedPhone,
   });
 });
 
-// Root API info endpoint for /api and /api/
+// Root API info endpoint
 app.get(['/api', '/api/'], (req, res) => {
   res.json({
     status: 'ok',
-    service: 'OpenWA WhatsApp Gateway',
+    service: 'OpenWA WhatsApp Gateway (Baileys Multi-Device)',
     session: SESSION_ID,
-    phone: `+${PHONE_NUMBER}`,
+    connected: connectionStatus === 'connected',
+    connectionStatus,
+    phone: connectedPhone ? `+${connectedPhone}` : null,
     dashboard: `http://localhost:${PORT}`,
+    qrAvailable: Boolean(currentQrDataUrl),
     endpoints: {
       health: `http://localhost:${PORT}/api/health`,
+      status: `http://localhost:${PORT}/api/status`,
+      qr: `http://localhost:${PORT}/api/qr`,
       sessions: `http://localhost:${PORT}/api/sessions`,
       sendText: `POST http://localhost:${PORT}/api/sessions/${SESSION_ID}/messages/send-text`,
-      zerixApp: 'http://localhost:3001'
+      logout: `POST http://localhost:${PORT}/api/logout`,
+      zerixApp: 'http://localhost:3001',
     }
+  });
+});
+
+// Detailed status endpoint
+app.get('/api/status', (req, res) => {
+  res.json({
+    configured: true,
+    connected: connectionStatus === 'connected',
+    status: connectionStatus,
+    phone: connectedPhone,
+    pushName,
+    qr: currentQr,
+    qrDataUrl: currentQrDataUrl,
+    sessionId: SESSION_ID,
+    messagesCount: sentMessages.length,
+    error: connectionError,
+  });
+});
+
+// Dedicated QR code endpoint
+app.get('/api/qr', (req, res) => {
+  res.json({
+    status: connectionStatus,
+    connected: connectionStatus === 'connected',
+    qr: currentQr,
+    qrDataUrl: currentQrDataUrl,
+    phone: connectedPhone,
   });
 });
 
@@ -61,11 +211,13 @@ app.get('/api/sessions', (req, res) => {
     {
       id: SESSION_ID,
       name: 'default',
-      status: 'ready',
-      phone: PHONE_NUMBER,
-      pushName: PUSH_NAME,
-      engine: 'openwa-core',
-      connectedAt: startTime,
+      status: connectionStatus === 'connected' ? 'ready' : connectionStatus,
+      connected: connectionStatus === 'connected',
+      phone: connectedPhone || process.env.OPENWA_PHONE || '919686868973',
+      pushName,
+      engine: 'baileys-multi-device',
+      qrDataUrl: currentQrDataUrl,
+      messagesDispatched: sentMessages.length,
     },
   ]);
 });
@@ -75,16 +227,17 @@ app.get('/api/sessions/:sessionId', (req, res) => {
   res.json({
     id: req.params.sessionId || SESSION_ID,
     name: 'default',
-    status: 'ready',
-    phone: PHONE_NUMBER,
-    pushName: PUSH_NAME,
-    engine: 'openwa-core',
-    connectedAt: startTime,
+    status: connectionStatus === 'connected' ? 'ready' : connectionStatus,
+    connected: connectionStatus === 'connected',
+    phone: connectedPhone || process.env.OPENWA_PHONE || '919686868973',
+    pushName,
+    engine: 'baileys-multi-device',
+    qrDataUrl: currentQrDataUrl,
   });
 });
 
 // Send text message endpoint (called by Zerix server.js)
-app.post('/api/sessions/:sessionId/messages/send-text', (req, res) => {
+app.post('/api/sessions/:sessionId/messages/send-text', async (req, res) => {
   const { chatId, text } = req.body || {};
   const sessionId = req.params.sessionId;
 
@@ -95,29 +248,94 @@ app.post('/api/sessions/:sessionId/messages/send-text', (req, res) => {
     });
   }
 
-  const messageId = 'owa_msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-  const record = {
-    messageId,
-    sessionId,
-    chatId,
-    text,
-    timestamp: Date.now(),
-    status: 'SENT',
-  };
+  // Extract pure phone digits
+  const rawDigits = chatId.replace(/[^0-9]/g, '');
+  if (!rawDigits || rawDigits.length < 7) {
+    return res.status(400).json({
+      error: true,
+      message: `Invalid recipient phone number: ${chatId}`,
+    });
+  }
 
-  sentMessages.unshift(record);
-  if (sentMessages.length > 100) sentMessages.pop();
+  // Standard WhatsApp JID format
+  const recipientJid = `${rawDigits}@s.whatsapp.net`;
 
-  console.log(`\x1b[32m[OpenWA Gateway]\x1b[0m 💬 Dispatched to \x1b[36m${chatId}\x1b[0m via session \x1b[33m${sessionId}\x1b[0m (ID: ${messageId})`);
+  // Verify connection status
+  if (connectionStatus !== 'connected' || !sock) {
+    return res.status(409).json({
+      error: true,
+      code: 'WHATSAPP_NOT_LINKED',
+      message: 'WhatsApp device is not linked. Scan the QR code with your phone to grant permission.',
+      connectionStatus,
+      qrAvailable: Boolean(currentQrDataUrl),
+      qrDataUrl: currentQrDataUrl,
+    });
+  }
 
-  res.status(200).json({
-    success: true,
-    messageId,
-    timestamp: record.timestamp,
-    chatId,
-    sessionId,
-    status: 'sent',
-  });
+  try {
+    // Dispatch real message via Baileys WhatsApp WebSocket
+    const result = await sock.sendMessage(recipientJid, { text });
+    const messageId = result?.key?.id || ('wa_' + Date.now());
+
+    const record = {
+      messageId,
+      sessionId,
+      chatId,
+      recipientJid,
+      text,
+      timestamp: Date.now(),
+      status: 'DELIVERED',
+    };
+
+    sentMessages.unshift(record);
+    if (sentMessages.length > 100) sentMessages.pop();
+
+    console.log(`\x1b[32m[OpenWA Gateway]\x1b[0m 💬 Real WhatsApp dispatched to \x1b[36m+${rawDigits}\x1b[0m (ID: ${messageId})`);
+
+    res.status(200).json({
+      success: true,
+      messageId,
+      timestamp: record.timestamp,
+      chatId,
+      sessionId,
+      status: 'sent',
+    });
+  } catch (err) {
+    console.error(`[OpenWA Dispatch Error] Failed to deliver to +${rawDigits}:`, err);
+    res.status(500).json({
+      error: true,
+      message: `WhatsApp dispatch failed: ${err.message}`,
+    });
+  }
+});
+
+// Logout endpoint (unlink phone number and clear session)
+app.post(['/api/logout', '/api/sessions/:sessionId/logout'], async (req, res) => {
+  try {
+    if (sock) {
+      try {
+        await sock.logout();
+      } catch (e) {
+        // ignore error during forced logout
+      }
+    }
+    try {
+      fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+      fs.mkdirSync(AUTH_DIR, { recursive: true });
+    } catch (e) {
+      // ignore
+    }
+    connectionStatus = 'disconnected';
+    connectedPhone = null;
+    currentQr = null;
+    currentQrDataUrl = null;
+
+    setTimeout(connectToWhatsApp, 1500);
+
+    res.json({ success: true, message: 'Logged out successfully. Regenerating QR code...' });
+  } catch (err) {
+    res.status(500).json({ error: true, message: err.message });
+  }
 });
 
 // Messages feed endpoint
@@ -127,6 +345,7 @@ app.get('/api/messages', (req, res) => {
 
 // Web UI for OpenWA Gateway Dashboard at http://localhost:2886
 app.get('/', (req, res) => {
+  const isConnected = connectionStatus === 'connected';
   const rows = sentMessages.map(m => `
     <tr style="border-bottom: 1px solid #1e293b;">
       <td style="padding: 10px; font-family: monospace; color: #38bdf8;">${new Date(m.timestamp).toLocaleTimeString()}</td>
@@ -141,55 +360,131 @@ app.get('/', (req, res) => {
     <html lang="en">
     <head>
       <meta charset="utf-8">
-      <title>OpenWA WhatsApp Gateway — Zerix</title>
+      <title>WhatsApp Gateway — Zerix</title>
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0b0f19; color: #f8fafc; margin: 0; padding: 1.5rem; }
-        .card { background: #131b2e; border: 1px solid #1e293b; border-radius: 12px; padding: 20px; max-width: 960px; margin: 0 auto 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
-        .badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
-        .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+        .card { background: #131b2e; border: 1px solid #1e293b; border-radius: 14px; padding: 24px; max-width: 960px; margin: 0 auto 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+        .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+        .badge-online { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .badge-offline { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .dot-green { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+        .dot-yellow { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
         table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
         th { text-align: left; padding: 10px; color: #94a3b8; border-bottom: 1px solid #1e293b; font-weight: 600; }
         .btn { background: #008069; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
         .btn:hover { background: #006a57; }
+        .btn-danger { background: #dc2626; }
+        .btn-danger:hover { background: #b91c1c; }
         .stat-box { background: #0b0f19; border: 1px solid #1e293b; border-radius: 8px; padding: 12px; }
         .stat-label { font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 600; }
         .stat-val { font-size: 13px; font-weight: 700; font-family: monospace; color: #cbd5e1; margin-top: 4px; }
+        .qr-card { background: #ffffff; border-radius: 12px; padding: 16px; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        .step-num { width: 22px; height: 22px; border-radius: 50%; background: #008069; color: white; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; flex-shrink: 0; }
       </style>
+      <script>
+        // Auto-refresh until connected or to stream messages
+        let isConnected = ${isConnected};
+        setInterval(async () => {
+          try {
+            const res = await fetch('/api/status');
+            const data = await res.json();
+            if (data.connected !== isConnected) {
+              location.reload();
+            }
+          } catch(e) {}
+        }, 3000);
+
+        async function logoutSession() {
+          if (!confirm('Unlink this WhatsApp account and generate a new QR code?')) return;
+          await fetch('/api/logout', { method: 'POST' });
+          location.reload();
+        }
+      </script>
     </head>
     <body>
       <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
           <div>
             <h2 style="margin: 0; display: flex; align-items: center; gap: 10px; font-size: 18px;">
-              <span>⚡ OpenWA WhatsApp Gateway</span>
+              <span>⚡ Zerix WhatsApp Gateway</span>
             </h2>
             <p style="color: #94a3b8; font-size: 12px; margin: 4px 0 0 0;">
-              Local Gateway Service connected to Zerix Platform on port <code>${PORT}</code>
+              Local Multi-Device Gateway on port <code>${PORT}</code> — Direct background delivery to real WhatsApp numbers
             </p>
           </div>
-          <div style="display: flex; items-center; gap: 10px;">
-            <span class="badge"><span class="dot"></span> Online & Ready</span>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            ${isConnected ? `
+              <span class="badge badge-online"><span class="dot dot-green"></span> WhatsApp Linked & Ready</span>
+              <button onclick="logoutSession()" class="btn btn-danger" style="padding: 6px 12px; font-size: 11px;">Unlink Device</button>
+            ` : `
+              <span class="badge badge-offline"><span class="dot dot-yellow"></span> Permission Pending (Scan QR)</span>
+            `}
             <a href="http://localhost:3001" target="_blank" class="btn">Open Zerix App ↗</a>
           </div>
         </div>
 
+        ${!isConnected ? `
+          <!-- QR Code Permission Authorization Section -->
+          <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid #1e293b; border-radius: 12px; padding: 20px; margin-top: 12px;">
+            <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: center;">
+              <div style="text-align: center;">
+                ${currentQrDataUrl ? `
+                  <div class="qr-card">
+                    <img src="${currentQrDataUrl}" alt="WhatsApp QR Code" style="width: 220px; height: 220px; display: block;" />
+                  </div>
+                  <p style="font-size: 11px; color: #94a3b8; margin: 8px 0 0 0;">Auto-refreshes automatically</p>
+                ` : `
+                  <div style="width: 220px; height: 220px; display: flex; align-items: center; justify-content: center; background: #1e293b; border-radius: 12px;">
+                    <p style="font-size: 12px; color: #94a3b8;">Generating QR Code...</p>
+                  </div>
+                `}
+              </div>
+              <div style="flex: 1; min-width: 260px; max-width: 480px;">
+                <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #38bdf8;">📱 Grant WhatsApp Permission</h3>
+                <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin-bottom: 16px;">
+                  WhatsApp requires 1-time device authorization to allow this local backend to send messages automatically in the background without opening WhatsApp Web.
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 12px; color: #94a3b8;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="step-num">1</span>
+                    <span>Open <strong>WhatsApp</strong> on your mobile phone</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="step-num">2</span>
+                    <span>Tap <strong>Settings</strong> (or <strong>⋮ 3-dots</strong> on Android) &rarr; <strong>Linked Devices</strong></span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="step-num">3</span>
+                    <span>Tap <strong>Link a Device</strong> and point camera at the QR code</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="step-num">4</span>
+                    <span>Once scanned, the gateway automatically connects and starts sending!</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 16px;">
           <div class="stat-box">
-            <div class="stat-label">Active Session ID</div>
-            <div class="stat-val" style="color: #38bdf8;">${SESSION_ID.substring(0, 16)}...</div>
+            <div class="stat-label">Gateway Status</div>
+            <div class="stat-val" style="color: ${isConnected ? '#4ade80' : '#fbbf24'};">${isConnected ? 'CONNECTED' : 'WAITING FOR QR SCAN'}</div>
           </div>
           <div class="stat-box">
-            <div class="stat-label">Connected Phone</div>
-            <div class="stat-val" style="color: #4ade80;">+${PHONE_NUMBER}</div>
+            <div class="stat-label">Linked Phone</div>
+            <div class="stat-val" style="color: #4ade80;">${connectedPhone ? `+${connectedPhone}` : 'Not Linked'}</div>
           </div>
           <div class="stat-box">
             <div class="stat-label">Business Identity</div>
-            <div class="stat-val" style="color: #a78bfa;">${PUSH_NAME}</div>
+            <div class="stat-val" style="color: #a78bfa;">${pushName}</div>
           </div>
           <div class="stat-box">
-            <div class="stat-label">Messages Processed</div>
-            <div class="stat-val" style="color: #fbbf24;">${sentMessages.length}</div>
+            <div class="stat-label">Real Messages Sent</div>
+            <div class="stat-val" style="color: #38bdf8;">${sentMessages.length}</div>
           </div>
         </div>
       </div>
@@ -237,8 +532,8 @@ function escapeHtml(str) {
 }
 
 app.listen(PORT, () => {
-  console.log(`\x1b[32m✔ OpenWA Gateway running at http://localhost:${PORT}\x1b[0m`);
-  console.log(`  • Session: ${SESSION_ID}`);
-  console.log(`  • Phone: +${PHONE_NUMBER} (${PUSH_NAME})`);
-  console.log(`  • Gateway Dashboard: http://localhost:${PORT}`);
+  console.log(`\x1b[32m✔ OpenWA WhatsApp Gateway running at http://localhost:${PORT}\x1b[0m`);
+  console.log(`  • Engine: Baileys Multi-Device WebSocket`);
+  console.log(`  • Gateway UI: http://localhost:${PORT}`);
+  console.log(`  • Status: Waiting for WhatsApp connection...\n`);
 });

@@ -5,6 +5,15 @@ const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
 
+// Global safety handlers to prevent server crashes on transient network glitches
+process.on('uncaughtException', (err) => {
+  console.error('[Global Exception Handler] Caught exception:', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Global Rejection Handler] Unhandled Rejection:', reason?.message || reason);
+});
+process.stdin.resume();
+
 const app = express();
 app.use(express.json());
 
@@ -260,13 +269,19 @@ async function sendWhatsAppMessage(phone, message) {
           chatId,
           text: message,
         }),
-        signal: AbortSignal.timeout(3000),
+        signal: AbortSignal.timeout(12000),
       });
 
       if (openwaRes.ok) {
         const data = await openwaRes.json().catch(() => ({}));
-        console.log(`[OpenWA Success] Message sent to ${chatId} via session ${sessionId} (ID: ${data.messageId || 'ok'})`);
+        console.log(`[OpenWA Success] Real WhatsApp dispatched to ${chatId} via session ${sessionId} (ID: ${data.messageId || 'ok'})`);
         return { provider: 'openwa', messageId: data.messageId, timestamp: data.timestamp, sessionId };
+      } else {
+        const errData = await openwaRes.json().catch(() => ({}));
+        console.warn(`[OpenWA Response ${openwaRes.status}]`, errData.message || 'Dispatch notice');
+        if (errData.code === 'WHATSAPP_NOT_LINKED') {
+          return { provider: 'wa_link_required', message: errData.message, qrDataUrl: errData.qrDataUrl };
+        }
       }
     } catch (e) {
       console.log(`[WhatsApp Gateway Offline] Falling back to Direct wa.me link mode: ${e.message}`);
@@ -1169,11 +1184,12 @@ app.get('/api/openwa/status', async (req, res) => {
   if (!process.env.OPENWA_API_URL) {
     return res.json({
       configured: false,
+      connected: false,
       message: 'OPENWA_API_URL is not configured in .env',
       howToSetup: {
         step1: 'Run OpenWA on port 2886: http://localhost:2886',
         step2: 'Scan the QR code with WhatsApp on your phone in the OpenWA Dashboard',
-        step3: 'Add OPENWA_API_URL, OPENWA_API_KEY, and OPENWA_SESSION_ID to .env',
+        step3: 'Add OPENWA_API_URL to .env',
       }
     });
   }
@@ -1185,34 +1201,53 @@ app.get('/api/openwa/status', async (req, res) => {
     const headers = {};
     if (apiKey) headers['X-API-Key'] = apiKey;
 
-    const response = await fetch(`${baseUrl}/api/sessions`, {
+    // Fetch rich status from OpenWA Baileys gateway
+    const response = await fetch(`${baseUrl}/api/status`, {
       method: 'GET',
       headers,
       signal: AbortSignal.timeout(4000),
     });
 
-    if (!response.ok) {
-      return res.status(response.status).json({
+    if (response.ok) {
+      const data = await response.json();
+      return res.json({
         configured: true,
-        connected: false,
-        status: response.status,
-        message: `OpenWA returned status ${response.status}`,
+        connected: data.connected === true,
+        sessionStatus: data.status || (data.connected ? 'ready' : 'scan_qr'),
+        activePhone: data.phone || null,
+        pushName: data.pushName || null,
+        qr: data.qr || null,
+        qrDataUrl: data.qrDataUrl || null,
+        messagesCount: data.messagesCount || 0,
+        url: baseUrl,
       });
     }
 
-    const rawSessions = await response.json();
-    const sessions = Array.isArray(rawSessions) ? rawSessions : [rawSessions];
-    const readySession = sessions.find(s => s && s.status === 'ready') || sessions[0] || null;
+    // Fallback to /api/sessions if older endpoint
+    const sessRes = await fetch(`${baseUrl}/api/sessions`, { headers, signal: AbortSignal.timeout(3000) });
+    if (sessRes.ok) {
+      const rawSessions = await sessRes.json();
+      const sessions = Array.isArray(rawSessions) ? rawSessions : [rawSessions];
+      const readySession = sessions.find(s => s && s.status === 'ready') || sessions[0] || null;
 
-    return res.json({
+      return res.json({
+        configured: true,
+        connected: readySession?.status === 'ready',
+        url: baseUrl,
+        sessions,
+        readySession,
+        activePhone: readySession?.phone || null,
+        pushName: readySession?.pushName || null,
+        sessionStatus: readySession?.status || 'unknown',
+        qrDataUrl: readySession?.qrDataUrl || null,
+      });
+    }
+
+    return res.status(response.status).json({
       configured: true,
-      connected: true,
-      url: baseUrl,
-      sessions,
-      readySession,
-      activePhone: readySession?.phone || null,
-      pushName: readySession?.pushName || null,
-      sessionStatus: readySession?.status || 'unknown',
+      connected: false,
+      status: response.status,
+      message: `OpenWA returned status ${response.status}`,
     });
   } catch (err) {
     return res.json({
@@ -1224,6 +1259,31 @@ app.get('/api/openwa/status', async (req, res) => {
   }
 });
 
+// Dedicated QR code proxy endpoint
+app.get('/api/openwa/qr', async (req, res) => {
+  if (!process.env.OPENWA_API_URL) return res.status(404).json({ error: 'OpenWA not configured' });
+  try {
+    const baseUrl = normalizeUrl(process.env.OPENWA_API_URL);
+    const r = await fetch(`${baseUrl}/api/qr`, { signal: AbortSignal.timeout(3000) });
+    const data = await r.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Proxy logout to unlink device
+app.post('/api/openwa/logout', async (req, res) => {
+  if (!process.env.OPENWA_API_URL) return res.status(404).json({ error: 'OpenWA not configured' });
+  try {
+    const baseUrl = normalizeUrl(process.env.OPENWA_API_URL);
+    const r = await fetch(`${baseUrl}/api/logout`, { method: 'POST', signal: AbortSignal.timeout(6000) });
+    const data = await r.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Fetch OpenWA Dispatched Messages Feed
 app.get('/api/openwa/messages', async (req, res) => {

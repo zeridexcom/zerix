@@ -201,7 +201,12 @@ function updateServerStatusUI(online) {
   }
 }
 
-// Check OpenWA Live Status
+// Live Gateway & QR State
+let latestQrDataUrl = null;
+let qrPollInterval = null;
+let linkedPhone = null;
+
+// Check OpenWA Live Status (Baileys Multi-Device)
 async function checkOpenWAStatus(notify = false) {
   const card = document.getElementById('openwa-diagnostic-card');
   const sideCard = document.getElementById('sidebar-gateway-card');
@@ -212,34 +217,105 @@ async function checkOpenWAStatus(notify = false) {
   const metricProvider = document.getElementById('metric-provider-name');
   const metricDetail = document.getElementById('metric-provider-detail');
 
+  // Composer Gateway Card Elements
+  const compCard = document.getElementById('composer-gateway-status-card');
+  const compDot = document.getElementById('composer-gw-dot');
+  const compTitle = document.getElementById('composer-gw-title');
+  const compDesc = document.getElementById('composer-gw-desc');
+  const compBtn = document.getElementById('composer-gw-btn');
+  const compBtnText = document.getElementById('composer-gw-btn-text');
+
+  // QR Modal Elements
+  const qrLoading = document.getElementById('qr-modal-loading');
+  const qrConnected = document.getElementById('qr-modal-connected');
+  const qrConnectedPhone = document.getElementById('qr-modal-connected-phone');
+  const qrScanBox = document.getElementById('qr-modal-scan-box');
+  const qrImg = document.getElementById('qr-modal-img');
+
   try {
     const res = await fetch('/api/openwa/status', { signal: AbortSignal.timeout(3500) });
     if (!res.ok) throw new Error(`Status ${res.status}`);
     const data = await res.json();
 
-    if (data.connected && data.activePhone) {
+    if (data.connected) {
       openwaConnected = true;
+      linkedPhone = data.activePhone || null;
       if (card) card.classList.add('hidden');
+
       if (sideDot) sideDot.className = 'w-2 h-2 rounded-full bg-[#25d366] shadow-[0_0_6px_#25d366]';
-      if (sideTitle) sideTitle.textContent = 'OpenWA Online';
-      if (sideDesc) sideDesc.textContent = `+${data.activePhone} (${data.sessionStatus})`;
+      if (sideTitle) sideTitle.textContent = 'WhatsApp Linked';
+      if (sideDesc) sideDesc.textContent = `+${data.activePhone || 'ready'}`;
+
       if (cfgStatusDisp) {
         cfgStatusDisp.className = 'font-bold text-emerald-600';
-        cfgStatusDisp.textContent = `Connected (Phone: +${data.activePhone})`;
+        cfgStatusDisp.textContent = `🟢 Connected (+${data.activePhone || 'ready'})`;
       }
-      if (metricProvider) metricProvider.textContent = 'OpenWA Gateway';
-      if (metricDetail) metricDetail.textContent = `+${data.activePhone} (Automated)`;
+      if (metricProvider) metricProvider.textContent = 'WhatsApp Gateway';
+      if (metricDetail) metricDetail.textContent = `+${data.activePhone || 'ready'} (Background)`;
 
       const headerInfo = document.getElementById('header-gateway-info');
-      if (headerInfo && backendOnline) headerInfo.textContent = `OpenWA: +${data.activePhone}`;
+      if (headerInfo && backendOnline) headerInfo.textContent = `WhatsApp: +${data.activePhone || 'ready'}`;
 
-      if (notify) showToast(`OpenWA Gateway connected (+${data.activePhone})`, 'success');
+      // Update composer card to active green
+      if (compCard) compCard.className = 'p-3 rounded-xl border border-emerald-300 bg-emerald-50/80 flex items-center justify-between text-xs transition-all';
+      if (compDot) compDot.className = 'w-2.5 h-2.5 rounded-full bg-[#25d366] shadow-[0_0_6px_#25d366]';
+      if (compTitle) compTitle.textContent = `🟢 WhatsApp Linked (+${data.activePhone || 'ready'})`;
+      if (compDesc) compDesc.textContent = 'Direct background dispatch active. Messages land straight in customer WhatsApp.';
+      if (compBtnText) compBtnText.textContent = 'Manage';
+
+      // Update QR modal to connected view
+      if (qrLoading) qrLoading.classList.add('hidden');
+      if (qrScanBox) qrScanBox.classList.add('hidden');
+      if (qrConnected) {
+        qrConnected.classList.remove('hidden');
+        if (qrConnectedPhone) qrConnectedPhone.textContent = `+${data.activePhone || 'ready'}`;
+      }
+
+      if (notify) showToast(`WhatsApp Gateway connected (+${data.activePhone || 'ready'})`, 'success');
+
+    } else if (data.sessionStatus === 'scan_qr' || data.qrDataUrl) {
+      openwaConnected = false;
+      latestQrDataUrl = data.qrDataUrl || null;
+      if (card) card.classList.add('hidden');
+
+      if (sideDot) sideDot.className = 'w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_6px_#3b82f6] animate-pulse';
+      if (sideTitle) sideTitle.textContent = 'Pair WhatsApp';
+      if (sideDesc) sideDesc.textContent = 'Scan QR to Link';
+
+      if (cfgStatusDisp) {
+        cfgStatusDisp.className = 'font-bold text-blue-600';
+        cfgStatusDisp.innerHTML = 'Scan QR Code Required · <button onclick="openWhatsAppQrModal()" class="underline font-bold text-[#008069]">Open QR Scanner</button>';
+      }
+      if (metricProvider) metricProvider.textContent = 'WhatsApp Direct';
+      if (metricDetail) metricDetail.textContent = 'Scan QR to automate';
+
+      const headerInfo = document.getElementById('header-gateway-info');
+      if (headerInfo && backendOnline) headerInfo.textContent = 'WhatsApp: Scan QR';
+
+      // Update composer card to prompt QR scan
+      if (compCard) compCard.className = 'p-3 rounded-xl border border-blue-200 bg-blue-50/70 flex items-center justify-between text-xs transition-all';
+      if (compDot) compDot.className = 'w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse';
+      if (compTitle) compTitle.textContent = '📱 WhatsApp Permission Required';
+      if (compDesc) compDesc.textContent = 'Scan QR code with your phone to enable direct background dispatch.';
+      if (compBtnText) compBtnText.textContent = 'Scan QR';
+
+      // Update QR modal
+      if (qrLoading) qrLoading.classList.add('hidden');
+      if (qrConnected) qrConnected.classList.add('hidden');
+      if (qrScanBox && data.qrDataUrl) {
+        qrScanBox.classList.remove('hidden');
+        if (qrImg) qrImg.src = data.qrDataUrl;
+      }
+
+      if (notify) showToast('Scan QR code to authorize WhatsApp background sending', 'info');
+
     } else {
       openwaConnected = false;
       if (card) card.classList.remove('hidden');
       if (sideDot) sideDot.className = 'w-2 h-2 rounded-full bg-amber-500';
       if (sideTitle) sideTitle.textContent = 'OpenWA Offline';
       if (sideDesc) sideDesc.textContent = 'Direct wa.me active';
+
       if (cfgStatusDisp) {
         cfgStatusDisp.className = 'font-bold text-amber-600';
         cfgStatusDisp.textContent = 'Offline (Port 2886 connection refused)';
@@ -249,6 +325,12 @@ async function checkOpenWAStatus(notify = false) {
 
       const headerInfo = document.getElementById('header-gateway-info');
       if (headerInfo && backendOnline) headerInfo.textContent = 'WhatsApp Direct';
+
+      if (compCard) compCard.className = 'p-3 rounded-xl border border-amber-200 bg-amber-50/70 flex items-center justify-between text-xs transition-all';
+      if (compDot) compDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500';
+      if (compTitle) compTitle.textContent = 'Direct WhatsApp Mode';
+      if (compDesc) compDesc.textContent = '1-click wa.me links active. Background gateway is currently offline.';
+      if (compBtnText) compBtnText.textContent = 'Fix';
 
       if (notify) showToast('OpenWA Gateway offline — Direct WhatsApp mode active', 'warning');
     }
@@ -263,6 +345,58 @@ async function checkOpenWAStatus(notify = false) {
       cfgStatusDisp.textContent = 'Unreachable (Check port 2886)';
     }
     if (notify) showToast('Could not reach OpenWA — using Direct WhatsApp links', 'warning');
+  }
+}
+
+// Open WhatsApp QR Code Pairing Modal
+function openWhatsAppQrModal() {
+  const modal = document.getElementById('whatsapp-qr-modal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+
+  // Trigger immediate status check
+  checkOpenWAStatus();
+
+  // Poll while modal is open to auto-close when paired
+  if (!qrPollInterval) {
+    qrPollInterval = setInterval(async () => {
+      await checkOpenWAStatus();
+      if (openwaConnected) {
+        showToast('🎉 WhatsApp linked successfully!', 'success');
+      }
+    }, 2500);
+  }
+}
+
+// Close WhatsApp QR Code Pairing Modal
+function closeWhatsAppQrModal() {
+  const modal = document.getElementById('whatsapp-qr-modal');
+  if (modal) modal.classList.add('hidden');
+  if (qrPollInterval) {
+    clearInterval(qrPollInterval);
+    qrPollInterval = null;
+  }
+}
+
+// Refresh QR Code
+async function refreshQrCode() {
+  const loading = document.getElementById('qr-modal-loading');
+  const scanBox = document.getElementById('qr-modal-scan-box');
+  if (loading) loading.classList.remove('hidden');
+  if (scanBox) scanBox.classList.add('hidden');
+  await checkOpenWAStatus();
+}
+
+// Unlink / Logout WhatsApp Device
+async function unlinkWhatsAppDevice() {
+  if (!confirm('Unlink this WhatsApp account and reset gateway? You will need to scan the QR code again to reconnect.')) return;
+  try {
+    const res = await fetch('/api/openwa/logout', { method: 'POST' });
+    const data = await res.json();
+    showToast(data.message || 'WhatsApp account unlinked', 'info');
+    await checkOpenWAStatus();
+  } catch (e) {
+    showToast('Failed to unlink: ' + e.message, 'error');
   }
 }
 
@@ -846,7 +980,7 @@ async function submitDispatchForm() {
         channel: currentChannel,
         jobReference,
       }),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(15000),
     });
 
     const data = await res.json();
@@ -861,6 +995,7 @@ async function submitDispatchForm() {
       email,
       channel: currentChannel,
       jobReference,
+      provider: data.provider || (openwaConnected ? 'openwa' : 'direct'),
     };
 
     // Update Live Simulator Preview with the dispatched record
@@ -873,23 +1008,28 @@ async function submitDispatchForm() {
     const manualBtn = document.getElementById('dispatch-manual-wame-btn');
 
     if (successBanner) {
-      if (openwaConnected) {
-        if (successTitle) successTitle.textContent = `Dispatched directly to +${cleanDigits} via OpenWA`;
-        if (successDesc) successDesc.textContent = `Automated delivery succeeded! The 5-star rating invite was sent in background. Customer receives it instantly.`;
+      if (dispatchedRecord.provider === 'openwa' || openwaConnected) {
+        if (successTitle) successTitle.textContent = `Dispatched directly to +${cleanDigits} via WhatsApp!`;
+        if (successDesc) successDesc.textContent = `Automated delivery succeeded! The 5-star rating invite was sent directly to customer WhatsApp in background. Zero manual typing!`;
+        if (manualBtn && data.whatsappLink) {
+          manualBtn.href = data.whatsappLink;
+          manualBtn.textContent = 'Open in WhatsApp Web anyway →';
+        }
       } else {
-        if (successTitle) successTitle.textContent = `Saved request for +${cleanDigits}`;
-        if (successDesc) successDesc.textContent = `OpenWA gateway is offline. You can click the link below to send via WhatsApp Web manually.`;
-      }
-      if (manualBtn && data.whatsappLink) {
-        manualBtn.href = data.whatsappLink;
+        if (successTitle) successTitle.textContent = `WhatsApp Permission Needed for +${cleanDigits}`;
+        if (successDesc) successDesc.innerHTML = `Your device is not linked to WhatsApp yet. <button type="button" onclick="openWhatsAppQrModal()" class="font-bold underline text-amber-800">Scan QR Code</button> to enable direct background dispatch, or tap below to send via WhatsApp Web now:`;
+        if (manualBtn && data.whatsappLink) {
+          manualBtn.href = data.whatsappLink;
+          manualBtn.textContent = '🚀 Send via WhatsApp Web Now →';
+        }
       }
       successBanner.classList.remove('hidden');
     }
 
-    if (openwaConnected) {
-      showToast(`✅ Dispatched directly to ${customerName} (+${cleanDigits}) via OpenWA!`, 'success');
+    if (dispatchedRecord.provider === 'openwa' || openwaConnected) {
+      showToast(`✅ Dispatched directly to ${customerName} (+${cleanDigits}) via WhatsApp!`, 'success');
     } else {
-      showToast(`Saved request for ${customerName}.`, 'success');
+      showToast(`Saved request for ${customerName}. Scan QR in Settings or send via WhatsApp Web!`, 'info');
     }
 
   } catch (err) {

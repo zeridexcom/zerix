@@ -16,7 +16,11 @@ yarn-error.log*
 # Runtime data & Sessions (keep .gitkeep in data if needed)
 data/*.json
 !data/.gitkeep
+auth_info_baileys/
+whatsapp_session/
+*.session
 
 # Operating System Files
 .DS_Store
 Thumbs.db
+
