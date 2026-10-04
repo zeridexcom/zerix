@@ -103,6 +103,11 @@ app.post('/api/sessions/:sessionId/messages/send-text', (req, res) => {
   });
 });
 
+// Messages feed endpoint
+app.get('/api/messages', (req, res) => {
+  res.json(sentMessages);
+});
+
 // Web UI for OpenWA Gateway Dashboard at http://localhost:2886
 app.get('/', (req, res) => {
   const rows = sentMessages.map(m => `

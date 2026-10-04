@@ -691,19 +691,59 @@ function setDispatchChannel(channel) {
 }
 
 // Live Update Simulator Preview in Send Page
-function updateSimulatorPreview() {
-  const name = document.getElementById('composer-name')?.value.trim();
-  const phone = document.getElementById('composer-phone')?.value.trim();
+function updateSimulatorPreview(lastSentRecord = null) {
+  const nameInput = document.getElementById('composer-name')?.value.trim();
+  const phoneInput = document.getElementById('composer-phone')?.value.trim();
   const bizName = serverConfig.businessName || 'zerix';
-  const reviewUrl = serverConfig.reviewUrl || '';
+  const customerName = lastSentRecord?.customerName || nameInput || 'Valued Customer';
+  const phone = lastSentRecord?.phone || phoneInput || '';
+  const cleanDigits = phone.replace(/[^0-9]/g, '');
+
+  const baseUrl = window.location.origin;
+  const reqId = lastSentRecord?.id || 'demo';
+
+  const star5 = `${baseUrl}/r/${reqId}?stars=5`;
+  const star4 = `${baseUrl}/r/${reqId}?stars=4`;
+  const star3 = `${baseUrl}/r/${reqId}?stars=3`;
+  const star2 = `${baseUrl}/r/${reqId}?stars=2`;
+  const star1 = `${baseUrl}/r/${reqId}?stars=1`;
 
   const simGreeting = document.getElementById('sim-bubble-greeting');
   if (simGreeting) {
-    if (name) {
-      simGreeting.innerHTML = `Hi <strong>${escapeHtml(name)}</strong>! 👋 Thank you for choosing <span class="capitalize">${escapeHtml(bizName)}</span>.`;
-    } else {
-      simGreeting.innerHTML = `Hi <strong>[Customer Name]</strong>! 👋 Thank you for choosing <span class="capitalize">${escapeHtml(bizName)}</span>.`;
-    }
+    simGreeting.innerHTML = `Hi <strong>${escapeHtml(customerName)}</strong>! 👋`;
+  }
+
+  const simBody = document.getElementById('sim-bubble-body');
+  if (simBody) {
+    simBody.innerHTML = `Thank you for choosing <strong class="capitalize">${escapeHtml(bizName)}</strong>! How was your experience today? Tap your rating below:`;
+  }
+
+  const simStarsContainer = document.getElementById('sim-bubble-stars-container');
+  if (simStarsContainer) {
+    simStarsContainer.innerHTML = `
+      <div class="space-y-1.5 pt-1">
+        <a href="${star5}" target="_blank" class="block p-1.5 rounded-lg bg-white/95 border border-emerald-300 text-left hover:bg-emerald-50 transition shadow-xs group" title="Preview 5★ Auto-Copy Funnel">
+          <div class="text-[11px] font-bold text-amber-500 group-hover:text-amber-600">⭐⭐⭐⭐⭐ Excellent (5/5)</div>
+          <div class="text-[9px] text-[#008069] font-mono truncate">👉 ${star5}</div>
+        </a>
+        <a href="${star4}" target="_blank" class="block p-1.5 rounded-lg bg-white/95 border border-emerald-300 text-left hover:bg-emerald-50 transition shadow-xs group" title="Preview 4★ Auto-Copy Funnel">
+          <div class="text-[11px] font-bold text-amber-500 group-hover:text-amber-600">⭐⭐⭐⭐ Good (4/5)</div>
+          <div class="text-[9px] text-[#008069] font-mono truncate">👉 ${star4}</div>
+        </a>
+        <a href="${star3}" target="_blank" class="block p-1.5 rounded-lg bg-white/95 border border-slate-200 text-left hover:bg-slate-50 transition shadow-xs group" title="Preview 3★ Shield Form">
+          <div class="text-[11px] font-bold text-amber-600 group-hover:text-amber-700">⭐⭐⭐ Okay / Fair (3/5)</div>
+          <div class="text-[9px] text-slate-500 font-mono truncate">👉 ${star3}</div>
+        </a>
+        <a href="${star2}" target="_blank" class="block p-1.5 rounded-lg bg-white/95 border border-rose-200 text-left hover:bg-rose-50 transition shadow-xs group" title="Preview 2★ Shield Form">
+          <div class="text-[11px] font-bold text-rose-500 group-hover:text-rose-600">⭐⭐ Poor (2/5)</div>
+          <div class="text-[9px] text-rose-600 font-mono truncate">👉 ${star2}</div>
+        </a>
+        <a href="${star1}" target="_blank" class="block p-1.5 rounded-lg bg-white/95 border border-rose-200 text-left hover:bg-rose-50 transition shadow-xs group" title="Preview 1★ Shield Form">
+          <div class="text-[11px] font-bold text-rose-600 group-hover:text-rose-700">⭐ Very Poor (1/5)</div>
+          <div class="text-[9px] text-rose-600 font-mono truncate">👉 ${star1}</div>
+        </a>
+      </div>
+    `;
   }
 
   const simTime = document.getElementById('sim-timestamp');
@@ -712,11 +752,38 @@ function updateSimulatorPreview() {
     simTime.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
+  // Update simulator header gateway info
+  const simSub = document.getElementById('sim-biz-subtitle');
+  const simBadge = document.getElementById('sim-status-badge');
+  const simTag = document.getElementById('sim-gateway-tag');
+  const simFooterDesc = document.getElementById('sim-footer-gateway-desc');
+
+  if (openwaConnected) {
+    if (simSub) simSub.textContent = 'OpenWA Automated Gateway';
+    if (simBadge) simBadge.textContent = 'OpenWA Online (Direct)';
+    if (simTag) simTag.innerHTML = '<span class="material-symbols-outlined text-[12px] text-[#25d366]">verified</span> Direct OpenWA Delivery';
+    if (simFooterDesc) simFooterDesc.textContent = 'OpenWA: Connected (Port 2886)';
+  } else {
+    if (simSub) simSub.textContent = 'Direct WhatsApp Mode';
+    if (simBadge) simBadge.textContent = 'WhatsApp Direct';
+    if (simTag) simTag.innerHTML = '<span class="material-symbols-outlined text-[12px]">link</span> wa.me 1-click delivery';
+    if (simFooterDesc) simFooterDesc.textContent = 'Direct wa.me fallback active';
+  }
+
+  // If a live record was dispatched, trigger delivery toast inside the simulator
+  const alertBox = document.getElementById('sim-live-delivery-alert');
+  const alertText = document.getElementById('sim-live-delivery-text');
+  if (alertBox && alertText && lastSentRecord) {
+    alertText.textContent = `Dispatched directly to +${cleanDigits || phone} via OpenWA!`;
+    alertBox.classList.remove('hidden');
+    setTimeout(() => alertBox.classList.add('hidden'), 5000);
+  }
+
+  // Composer wa.me text display
   const wameDisplay = document.getElementById('composer-wame-text');
   if (wameDisplay) {
     if (phone) {
-      const cleanDigits = phone.replace(/[^0-9]/g, '');
-      const waText = `Hi ${name || 'there'}! 👋 Thank you for choosing ${bizName}! We hope you had a great experience with us. Could you please take 30 seconds to leave us a quick Google review? ⭐ ${reviewUrl}\n\nThank you so much!\n— ${bizName} Team`;
+      const waText = `Hi ${customerName}! 👋\n\nThank you for choosing ${bizName}! How was your experience today? Tap your rating below:\n\n⭐⭐⭐⭐⭐ Excellent (5/5)\n👉 ${star5}\n\n⭐⭐⭐⭐ Good (4/5)\n👉 ${star4}\n\n⭐⭐⭐ Average (3/5)\n👉 ${star3}\n\n⭐ Had an issue (1/5)\n👉 ${star1}\n\nThank you!\n— ${bizName} Team`;
       wameDisplay.textContent = `wa.me/${cleanDigits}?text=${encodeURIComponent(waText)}`;
     } else {
       wameDisplay.textContent = 'Enter customer phone to generate link';
@@ -764,11 +831,8 @@ async function submitDispatchForm() {
     sendBtn.classList.add('opacity-70');
   }
 
-  const bizName = serverConfig.businessName || 'zerix';
-  const reviewUrl = serverConfig.reviewUrl || '';
   const cleanDigits = phone ? phone.replace(/[^0-9]/g, '') : '';
-  const waText = `Hi ${customerName}! 👋 Thank you for choosing ${bizName}! We hope you had a great experience with us. Could you please take 30 seconds to leave us a quick Google review? ⭐ ${reviewUrl}\n\nThank you so much!\n— ${bizName} Team`;
-  const directWaLink = cleanDigits ? `https://wa.me/${cleanDigits}?text=${encodeURIComponent(waText)}` : null;
+  const bizName = serverConfig.businessName || 'zerix';
 
   try {
     // Attempt backend dispatch
@@ -782,18 +846,50 @@ async function submitDispatchForm() {
         channel: currentChannel,
         jobReference,
       }),
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(5000),
     });
 
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to dispatch request');
 
     updateServerStatusUI(true);
-    showToast(`Review request sent to ${customerName}!`, 'success');
 
-    // If channel is WhatsApp, optionally open direct link
-    if (currentChannel === 'whatsapp' && data.whatsappLink) {
-      window.open(data.whatsappLink, '_blank');
+    const dispatchedRecord = data.results?.[0] || data.firstRecord || {
+      id: data.results?.[0]?.id || 'demo',
+      customerName,
+      phone,
+      email,
+      channel: currentChannel,
+      jobReference,
+    };
+
+    // Update Live Simulator Preview with the dispatched record
+    updateSimulatorPreview(dispatchedRecord);
+
+    // Show inline success banner in the composer
+    const successBanner = document.getElementById('composer-dispatch-success');
+    const successTitle = document.getElementById('dispatch-success-title');
+    const successDesc = document.getElementById('dispatch-success-desc');
+    const manualBtn = document.getElementById('dispatch-manual-wame-btn');
+
+    if (successBanner) {
+      if (openwaConnected) {
+        if (successTitle) successTitle.textContent = `Dispatched directly to +${cleanDigits} via OpenWA`;
+        if (successDesc) successDesc.textContent = `Automated delivery succeeded! The 5-star rating invite was sent in background. Customer receives it instantly.`;
+      } else {
+        if (successTitle) successTitle.textContent = `Saved request for +${cleanDigits}`;
+        if (successDesc) successDesc.textContent = `OpenWA gateway is offline. You can click the link below to send via WhatsApp Web manually.`;
+      }
+      if (manualBtn && data.whatsappLink) {
+        manualBtn.href = data.whatsappLink;
+      }
+      successBanner.classList.remove('hidden');
+    }
+
+    if (openwaConnected) {
+      showToast(`✅ Dispatched directly to ${customerName} (+${cleanDigits}) via OpenWA!`, 'success');
+    } else {
+      showToast(`Saved request for ${customerName}.`, 'success');
     }
 
   } catch (err) {
@@ -811,7 +907,7 @@ async function submitDispatchForm() {
       status: 'sent',
       createdAt: Date.now(),
       followUpSent: false,
-      whatsappLink: directWaLink,
+      whatsappLink: cleanDigits ? `https://wa.me/${cleanDigits}` : null,
       provider: 'direct',
     };
 
@@ -820,11 +916,9 @@ async function submitDispatchForm() {
       localStorage.setItem('zerix_cached_requests', JSON.stringify(allRequests));
     } catch (e) {}
 
-    showToast(`Saved locally (Offline Mode). WhatsApp link ready!`, 'warning');
+    updateSimulatorPreview(offlineRecord);
+    showToast(`Saved locally (Offline Mode).`, 'warning');
 
-    if (currentChannel === 'whatsapp' && directWaLink) {
-      window.open(directWaLink, '_blank');
-    }
   } finally {
     if (sendBtn) {
       sendBtn.disabled = false;
@@ -834,7 +928,6 @@ async function submitDispatchForm() {
     if (nameInput) nameInput.value = '';
     if (contactInput) contactInput.value = '';
     if (jobInput) jobInput.value = '';
-    updateSimulatorPreview();
 
     updateMetrics();
     renderLedgerTable();

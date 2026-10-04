@@ -1207,6 +1207,20 @@ app.get('/api/openwa/status', async (req, res) => {
 });
 
 
+// Fetch OpenWA Dispatched Messages Feed
+app.get('/api/openwa/messages', async (req, res) => {
+  if (!process.env.OPENWA_API_URL) return res.json([]);
+  try {
+    const baseUrl = normalizeUrl(process.env.OPENWA_API_URL);
+    const r = await fetch(`${baseUrl}/api/messages`, { signal: AbortSignal.timeout(2000) });
+    if (r.ok) {
+      const msgs = await r.json();
+      return res.json(msgs);
+    }
+  } catch (e) {}
+  res.json([]);
+});
+
 // Get templates
 app.get('/api/templates', (req, res) => {
   const emailTemplate = loadTemplate('email-template.md') || '';

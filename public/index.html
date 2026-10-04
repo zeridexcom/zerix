@@ -605,11 +605,31 @@
               <!-- 1-Click Direct WhatsApp Link Box -->
               <div class="p-3 rounded-lg bg-[#efeae2]/60 border border-[#e9edef] space-y-1.5">
                 <div class="flex items-center justify-between text-[11px] font-semibold text-[#008069]">
-                  <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">link</span> 1-Click Direct WhatsApp Link</span>
+                  <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">link</span> Direct WhatsApp Link (Manual Fallback)</span>
                   <button type="button" onclick="copyWameLink()" class="text-xs font-bold hover:underline">Copy Link</button>
                 </div>
                 <div id="composer-wame-text" class="text-[11px] font-mono text-[#54656f] break-all bg-white p-2 rounded border border-[#e9edef]">
                   Enter customer phone to generate link
+                </div>
+              </div>
+
+              <!-- Automated OpenWA Dispatch Success Banner -->
+              <div id="composer-dispatch-success" class="hidden p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1.5 animate-fade">
+                <div class="flex items-center justify-between font-bold text-emerald-800">
+                  <span class="flex items-center gap-1.5">
+                    <span class="material-symbols-outlined text-[18px] text-emerald-600">verified</span>
+                    <span id="dispatch-success-title">Message Sent via OpenWA</span>
+                  </span>
+                  <span class="text-[10px] bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full font-mono">Delivered</span>
+                </div>
+                <p id="dispatch-success-desc" class="text-[11px] text-emerald-700 leading-tight">
+                  The review request was dispatched directly to the customer's phone. No manual sending needed!
+                </p>
+                <div class="pt-1 flex items-center justify-between border-t border-emerald-200/60 text-[10px]">
+                  <span class="text-emerald-600 font-mono">Direct Background Delivery</span>
+                  <a id="dispatch-manual-wame-btn" href="#" target="_blank" class="text-emerald-800 underline font-semibold">
+                    Open in WhatsApp Web anyway &rarr;
+                  </a>
                 </div>
               </div>
 
@@ -628,7 +648,7 @@
             <!-- Simulator Header -->
             <div class="bg-[#008069] text-white px-4 py-3 flex items-center justify-between">
               <div class="flex items-center gap-2.5">
-                <div id="sim-avatar" class="w-8 h-8 rounded-full bg-white text-[#008069] font-bold text-xs flex items-center justify-center uppercase">
+                <div id="sim-avatar" class="w-8 h-8 rounded-full bg-white text-[#008069] font-bold text-xs flex items-center justify-center uppercase shadow-xs">
                   Z
                 </div>
                 <div>
@@ -636,41 +656,61 @@
                     <span id="sim-biz-name" class="font-bold text-xs capitalize">zerix</span>
                     <span class="material-symbols-outlined text-[13px] text-[#25d366] fill-icon">verified</span>
                   </div>
-                  <p class="text-[10px] text-white/80">Business Account</p>
+                  <p class="text-[10px] text-white/80" id="sim-biz-subtitle">OpenWA Automated Gateway</p>
                 </div>
               </div>
-              <span class="text-[11px] font-mono text-white/80">Live Preview</span>
+              <div class="flex items-center gap-1.5">
+                <span id="sim-status-dot" class="w-2 h-2 rounded-full bg-[#25d366] animate-pulse"></span>
+                <span id="sim-status-badge" class="text-[10px] font-mono text-white/90">Live OpenWA Feed</span>
+              </div>
             </div>
 
-            <!-- WhatsApp Chat Background & Bubble -->
-            <div class="wa-chat-bg p-4 flex flex-col justify-end min-h-[360px] space-y-3">
+            <!-- WhatsApp Chat Background & Live Bubbles -->
+            <div class="wa-chat-bg p-4 flex flex-col justify-end min-h-[380px] space-y-3 overflow-y-auto max-h-[500px]">
               <div class="self-center bg-white/80 px-2.5 py-1 rounded-full text-[10px] text-[#667781] font-semibold shadow-xs">
-                TODAY
+                TODAY • LIVE SIMULATOR
               </div>
 
-              <!-- Green Message Bubble -->
-              <div class="self-end max-w-[85%] bg-[#d9fdd3] text-[#111b21] p-3 rounded-lg rounded-tr-none shadow-sm space-y-2 text-xs relative">
-                <p id="sim-bubble-greeting">Hi <strong>[Customer Name]</strong>! 👋 Thank you for choosing <span class="capitalize" id="sim-bubble-biz">zerix</span>.</p>
-                <p class="text-[11px] text-[#3b4a54]">We hope you had a great experience with us. Could you take 30 seconds to leave us a quick Google review?</p>
+              <!-- Green Outbound Message Bubble -->
+              <div class="self-end max-w-[92%] bg-[#d9fdd3] text-[#111b21] p-3 rounded-lg rounded-tr-none shadow-sm space-y-2 text-xs relative">
+                <p id="sim-bubble-greeting" class="font-semibold text-[#111b21]">Hi <strong>[Customer Name]</strong>! 👋</p>
+                <p id="sim-bubble-body" class="text-[11px] text-[#3b4a54] leading-relaxed">
+                  Thank you for choosing <strong class="capitalize" id="sim-bubble-biz">zerix</strong>! How was your experience today? Tap your rating below:
+                </p>
                 
-                <!-- Google Card in Bubble -->
-                <div class="bg-white/80 p-2 rounded border border-emerald-200/60 flex items-center justify-between gap-2">
-                  <div class="flex items-center gap-2 overflow-hidden">
-                    <span class="material-symbols-outlined text-amber-500 text-[18px] fill-icon">star</span>
-                    <span id="sim-review-url-text" class="text-[10px] font-mono text-[#008069] truncate">Google Review Link</span>
-                  </div>
-                  <a id="sim-review-url-btn" href="#" target="_blank" class="text-[10px] font-bold text-[#008069] whitespace-nowrap hover:underline">Open</a>
+                <!-- 5 Clickable Rating Cards in WhatsApp Bubble -->
+                <div id="sim-bubble-stars-container" class="space-y-1.5 pt-1">
+                  <!-- Populated dynamically with star links -->
                 </div>
 
-                <div class="flex items-center justify-end gap-1 text-[10px] text-[#667781] pt-1">
-                  <span id="sim-timestamp">12:00 PM</span>
-                  <span class="material-symbols-outlined text-[14px] text-[#53bdeb] fill-icon">done_all</span>
+                <div class="flex items-center justify-between text-[10px] text-[#667781] pt-1.5 border-t border-emerald-200/40">
+                  <span id="sim-gateway-tag" class="font-mono text-[9px] text-[#008069] flex items-center gap-1">
+                    <span class="material-symbols-outlined text-[12px]">send</span> Direct OpenWA Delivery
+                  </span>
+                  <div class="flex items-center gap-1">
+                    <span id="sim-timestamp">12:00 PM</span>
+                    <span id="sim-double-tick" class="material-symbols-outlined text-[14px] text-[#53bdeb] fill-icon">done_all</span>
+                  </div>
                 </div>
+              </div>
+
+              <!-- Live Gateway Sent Notification Card (Shows real OpenWA dispatches) -->
+              <div id="sim-live-delivery-alert" class="hidden self-center bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 px-3 py-1.5 rounded-xl text-[11px] flex items-center gap-2 shadow-sm animate-fade">
+                <span class="material-symbols-outlined text-[16px] text-emerald-400">check_circle</span>
+                <span id="sim-live-delivery-text">Message delivered directly via OpenWA!</span>
               </div>
             </div>
 
-            <div class="p-3 bg-[#f0f2f5] border-t border-[#e9edef] text-center text-[11px] text-[#667781]">
-              Authentic WhatsApp bubble layout with Google review link
+            <!-- Footer: Live OpenWA Status bar -->
+            <div id="sim-footer-status" class="p-2.5 bg-[#f0f2f5] border-t border-[#e9edef] flex items-center justify-between text-[11px] text-[#667781]">
+              <span class="flex items-center gap-1 font-mono text-[10px]">
+                <span class="w-2 h-2 rounded-full bg-[#25d366]"></span>
+                <span id="sim-footer-gateway-desc">OpenWA: Connected (Port 2886)</span>
+              </span>
+              <a href="http://localhost:2886" target="_blank" class="text-[10px] text-[#008069] hover:underline font-semibold flex items-center gap-0.5">
+                <span>OpenWA Console</span>
+                <span class="material-symbols-outlined text-[12px]">open_in_new</span>
+              </a>
             </div>
           </div>
 
