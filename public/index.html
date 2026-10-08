@@ -1049,6 +1049,8 @@
         </button>
       </div>
     </div>
+  </div>
+
   <!-- WHATSAPP PAIRING & QR CODE PERMISSION MODAL -->
   <div id="whatsapp-qr-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-[#e9edef] animate-fade">
@@ -1119,6 +1121,61 @@
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CUSTOM CONFIRMATION & ALERT DIALOG MODAL -->
+  <div id="custom-confirm-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div id="custom-confirm-container" class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-[#e9edef] animate-fade transition-transform transform duration-200">
+      <!-- Header -->
+      <div id="confirm-modal-header" class="p-4 bg-slate-900 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div id="confirm-modal-icon-badge" class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+            <span id="confirm-modal-icon" class="material-symbols-outlined text-[20px]">warning</span>
+          </div>
+          <div>
+            <h3 id="confirm-modal-title" class="font-bold text-sm leading-tight text-white">Notice</h3>
+            <p id="confirm-modal-subtitle" class="text-[11px] text-slate-300">Action confirmation</p>
+          </div>
+        </div>
+        <button id="confirm-modal-close-x" type="button" class="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition">
+          <span class="material-symbols-outlined text-[18px]">close</span>
+        </button>
+      </div>
+
+      <!-- Body Content -->
+      <div class="p-5 space-y-4 text-left">
+        <div class="flex items-start gap-3.5">
+          <div id="confirm-modal-body-icon" class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-200/60 shrink-0 flex items-center justify-center mt-0.5">
+            <span id="confirm-modal-inner-icon" class="material-symbols-outlined text-[22px]">history_toggle_off</span>
+          </div>
+          <div class="space-y-1.5 flex-1 text-xs">
+            <p id="confirm-modal-message" class="font-bold text-slate-800 text-[13px] leading-snug">
+              This customer was already sent a review request within the last 7 days.
+            </p>
+            <p id="confirm-modal-submessage" class="text-slate-500 leading-relaxed text-xs">
+              Do you want to send another review request anyway?
+            </p>
+          </div>
+        </div>
+
+        <!-- Optional Tip / Note -->
+        <div id="confirm-modal-tip" class="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 text-[11px] text-amber-800 flex items-start gap-2">
+          <span class="material-symbols-outlined text-[16px] text-amber-600 shrink-0 mt-0.5">info</span>
+          <span id="confirm-modal-tip-text" class="leading-relaxed">This safeguard prevents sending duplicate review requests to the same customer within 7 days.</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="p-3.5 bg-[#f0f2f5] border-t border-[#e9edef] flex items-center justify-end gap-2.5">
+        <button id="confirm-modal-cancel-btn" type="button" class="px-4 py-2 rounded-xl bg-white border border-[#e9edef] text-slate-700 text-xs font-semibold hover:bg-slate-100 transition shadow-xs">
+          Cancel
+        </button>
+        <button id="confirm-modal-ok-btn" type="button" class="px-4 py-2 rounded-xl bg-[#008069] hover:bg-[#006a57] text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5">
+          <span id="confirm-modal-ok-text">Send Anyway</span>
+          <span id="confirm-modal-ok-icon" class="material-symbols-outlined text-[15px]">send</span>
+        </button>
       </div>
     </div>
   </div>

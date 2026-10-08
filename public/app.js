@@ -58,7 +58,150 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
   });
+
+  // Custom Confirmation Modal Event Listeners
+  const confirmModal = document.getElementById('custom-confirm-modal');
+  const confirmOkBtn = document.getElementById('confirm-modal-ok-btn');
+  const confirmCancelBtn = document.getElementById('confirm-modal-cancel-btn');
+  const confirmCloseX = document.getElementById('confirm-modal-close-x');
+
+  if (confirmOkBtn) {
+    confirmOkBtn.addEventListener('click', () => closeCustomConfirm(true));
+  }
+  if (confirmCancelBtn) {
+    confirmCancelBtn.addEventListener('click', () => closeCustomConfirm(false));
+  }
+  if (confirmCloseX) {
+    confirmCloseX.addEventListener('click', () => closeCustomConfirm(false));
+  }
+  if (confirmModal) {
+    confirmModal.addEventListener('click', (e) => {
+      if (e.target === confirmModal) {
+        closeCustomConfirm(false);
+      }
+    });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && confirmModal && !confirmModal.classList.contains('hidden')) {
+      closeCustomConfirm(false);
+    }
+  });
 });
+
+// Custom Confirmation & Alert Dialog Modal Helper
+let customConfirmResolver = null;
+
+function showCustomConfirm({
+  title = 'Notice',
+  subtitle = 'Action Notice',
+  message = 'Are you sure you want to proceed?',
+  subMessage = '',
+  tip = '',
+  confirmText = 'OK',
+  cancelText = 'Cancel',
+  type = 'warning', // 'warning', 'danger', 'info', 'success'
+  icon = null,
+} = {}) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('custom-confirm-modal');
+    if (!modal) {
+      resolve(window.confirm(`${message}\n\n${subMessage}`));
+      return;
+    }
+
+    customConfirmResolver = resolve;
+
+    const titleEl = document.getElementById('confirm-modal-title');
+    const subTitleEl = document.getElementById('confirm-modal-subtitle');
+    const msgEl = document.getElementById('confirm-modal-message');
+    const subMsgEl = document.getElementById('confirm-modal-submessage');
+    const tipContainer = document.getElementById('confirm-modal-tip');
+    const tipTextEl = document.getElementById('confirm-modal-tip-text');
+    const okBtn = document.getElementById('confirm-modal-ok-btn');
+    const okText = document.getElementById('confirm-modal-ok-text');
+    const okIcon = document.getElementById('confirm-modal-ok-icon');
+    const cancelBtn = document.getElementById('confirm-modal-cancel-btn');
+    const iconEl = document.getElementById('confirm-modal-icon');
+    const innerIconEl = document.getElementById('confirm-modal-inner-icon');
+    const iconBadge = document.getElementById('confirm-modal-icon-badge');
+    const bodyIconBox = document.getElementById('confirm-modal-body-icon');
+    const headerEl = document.getElementById('confirm-modal-header');
+
+    if (titleEl) titleEl.textContent = title;
+    if (subTitleEl) subTitleEl.textContent = subtitle;
+    if (msgEl) msgEl.textContent = message;
+
+    if (subMsgEl) {
+      if (subMessage) {
+        subMsgEl.textContent = subMessage;
+        subMsgEl.classList.remove('hidden');
+      } else {
+        subMsgEl.classList.add('hidden');
+      }
+    }
+
+    if (tipContainer && tipTextEl) {
+      if (tip) {
+        tipTextEl.textContent = tip;
+        tipContainer.classList.remove('hidden');
+      } else {
+        tipContainer.classList.add('hidden');
+      }
+    }
+
+    if (okText) okText.textContent = confirmText;
+
+    if (cancelBtn) {
+      if (cancelText) {
+        cancelBtn.textContent = cancelText;
+        cancelBtn.classList.remove('hidden');
+      } else {
+        cancelBtn.classList.add('hidden');
+      }
+    }
+
+    // Set theme and styling by modal type
+    if (type === 'danger') {
+      if (headerEl) headerEl.className = 'p-4 bg-rose-950 text-white flex items-center justify-between border-b border-rose-900';
+      if (iconBadge) iconBadge.className = 'w-8 h-8 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0';
+      if (iconEl) iconEl.textContent = icon || 'warning';
+      if (bodyIconBox) bodyIconBox.className = 'w-10 h-10 rounded-xl bg-rose-50 text-rose-600 border border-rose-200/60 shrink-0 flex items-center justify-center mt-0.5';
+      if (innerIconEl) innerIconEl.textContent = icon || 'delete_forever';
+      if (okBtn) okBtn.className = 'px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5';
+      if (okIcon) okIcon.textContent = 'delete';
+    } else if (type === 'warning') {
+      if (headerEl) headerEl.className = 'p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800';
+      if (iconBadge) iconBadge.className = 'w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0';
+      if (iconEl) iconEl.textContent = icon || 'warning';
+      if (bodyIconBox) bodyIconBox.className = 'w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-200/60 shrink-0 flex items-center justify-center mt-0.5';
+      if (innerIconEl) innerIconEl.textContent = icon || 'history_toggle_off';
+      if (okBtn) okBtn.className = 'px-4 py-2 rounded-xl bg-[#008069] hover:bg-[#006a57] text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5';
+      if (okIcon) okIcon.textContent = 'send';
+    } else {
+      if (headerEl) headerEl.className = 'p-4 bg-[#008069] text-white flex items-center justify-between';
+      if (iconBadge) iconBadge.className = 'w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0';
+      if (iconEl) iconEl.textContent = icon || 'info';
+      if (bodyIconBox) bodyIconBox.className = 'w-10 h-10 rounded-xl bg-emerald-50 text-[#008069] border border-emerald-200/60 shrink-0 flex items-center justify-center mt-0.5';
+      if (innerIconEl) innerIconEl.textContent = icon || 'check_circle';
+      if (okBtn) okBtn.className = 'px-4 py-2 rounded-xl bg-[#008069] hover:bg-[#006a57] text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5';
+      if (okIcon) okIcon.textContent = 'check';
+    }
+
+    modal.classList.remove('hidden');
+    if (okBtn) okBtn.focus();
+  });
+}
+
+function closeCustomConfirm(result = false) {
+  const modal = document.getElementById('custom-confirm-modal');
+  if (modal) modal.classList.add('hidden');
+  if (customConfirmResolver) {
+    const resolver = customConfirmResolver;
+    customConfirmResolver = null;
+    resolver(result);
+  }
+}
 
 // Toast notification helper
 function showToast(message, type = 'info') {
@@ -389,7 +532,18 @@ async function refreshQrCode() {
 
 // Unlink / Logout WhatsApp Device
 async function unlinkWhatsAppDevice() {
-  if (!confirm('Unlink this WhatsApp account and reset gateway? You will need to scan the QR code again to reconnect.')) return;
+  const confirmed = await showCustomConfirm({
+    title: 'Unlink WhatsApp Gateway',
+    subtitle: 'Disconnect Active Session',
+    message: 'Unlink this WhatsApp account and reset gateway?',
+    subMessage: 'You will need to scan the QR code again to reconnect.',
+    tip: 'Automated background messages will pause until a device is paired again.',
+    confirmText: 'Unlink Device',
+    cancelText: 'Keep Connected',
+    type: 'danger',
+    icon: 'link_off',
+  });
+  if (!confirmed) return;
   try {
     const res = await fetch('/api/openwa/logout', { method: 'POST' });
     const data = await res.json();
@@ -1067,7 +1221,17 @@ async function submitDispatchForm() {
 
   if (!res || !res.ok) {
     if (res?.status === 409) {
-      const confirmResend = confirm(`Notice: This customer was already sent a review request within the last 7 days.\n\nDo you want to send another review request anyway?`);
+      const confirmResend = await showCustomConfirm({
+        title: 'Duplicate Request Notice',
+        subtitle: '7-Day Frequency Safeguard',
+        message: 'This customer was already sent a review request within the last 7 days.',
+        subMessage: 'Do you want to send another review request anyway?',
+        tip: 'Sending duplicate invitations to the same customer within 7 days may cause fatigue. Confirming will bypass this check and dispatch a fresh review link immediately.',
+        confirmText: 'Send Anyway',
+        cancelText: 'Cancel',
+        type: 'warning',
+        icon: 'history_toggle_off',
+      });
       if (confirmResend) {
         if (forceCheckbox) forceCheckbox.checked = true;
         if (sendBtn) {
@@ -1075,6 +1239,12 @@ async function submitDispatchForm() {
           sendBtn.classList.remove('opacity-70');
         }
         return submitDispatchForm();
+      } else {
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          sendBtn.classList.remove('opacity-70');
+        }
+        return;
       }
     }
     showToast(data?.error || `Failed to dispatch request (${res?.status || 500})`, 'error');
