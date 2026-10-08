@@ -11,6 +11,9 @@ let serverConfig = {
   businessName: 'zerix',
   reviewUrl: 'https://share.google/LwOYT2Dn1YjKGqlKt',
   followUpDays: 3,
+  appBaseUrl: 'http://192.168.1.3:3001',
+  detectedLanIp: 'http://192.168.1.3:3001',
+  effectiveBaseUrl: 'http://192.168.1.3:3001',
   openwaConfigured: true,
   openwaUrl: 'http://localhost:2886',
 };
@@ -618,12 +621,69 @@ async function fetchConfig() {
     const cfgMgr = document.getElementById('cfg-manager-phone');
     if (cfgMgr) cfgMgr.value = serverConfig.managerPhone || '';
 
+    const cfgBaseUrl = document.getElementById('cfg-app-base-url');
+    if (cfgBaseUrl) cfgBaseUrl.value = serverConfig.appBaseUrl || '';
+
+    const lanText = document.getElementById('cfg-detected-lan-text');
+    if (lanText && serverConfig.detectedLanIp) {
+      lanText.textContent = serverConfig.detectedLanIp.replace(/^https?:\/\//, '');
+    }
+
+    const composerBaseDisplay = document.getElementById('composer-base-url-display');
+    if (composerBaseDisplay) {
+      composerBaseDisplay.textContent = serverConfig.appBaseUrl || serverConfig.effectiveBaseUrl || window.location.origin;
+    }
+
     const cfgWaDisp = document.getElementById('cfg-openwa-url-disp');
     if (cfgWaDisp) cfgWaDisp.textContent = serverConfig.openwaUrl || 'http://localhost:2886';
 
   } catch (err) {
     console.warn('Backend config offline, running in resilient mode:', err.message);
     updateServerStatusUI(false);
+  }
+}
+
+function getDefaultWhatsAppCopy() {
+  return `Hi {{customerName}}! 👋\n\nThank you for choosing {{businessName}}! How was your experience today? Tap your rating below:\n\n⭐⭐⭐⭐⭐ Excellent (5/5)\n👉 {{star5Url}}\n\n⭐⭐⭐⭐ Good (4/5)\n👉 {{star4Url}}\n\n⭐⭐⭐ Okay / Fair (3/5)\n👉 {{star3Url}}\n\n⭐⭐ Poor (2/5)\n👉 {{star2Url}}\n\n⭐ Very Poor (1/5)\n👉 {{star1Url}}\n\nThank you!\n— {{businessName}} Team`;
+}
+
+function resetComposerMessage() {
+  const composerMsg = document.getElementById('composer-message');
+  if (composerMsg) {
+    composerMsg.value = templates.whatsapp || getDefaultWhatsAppCopy();
+    updateSimulatorPreview();
+    showToast('Reset message to default template', 'info');
+  }
+}
+
+function insertComposerTag(tag) {
+  const textarea = document.getElementById('composer-message');
+  if (!textarea) return;
+  const start = textarea.selectionStart || 0;
+  const end = textarea.selectionEnd || 0;
+  const val = textarea.value;
+  textarea.value = val.substring(0, start) + tag + val.substring(end);
+  textarea.selectionStart = textarea.selectionEnd = start + tag.length;
+  textarea.focus();
+  updateSimulatorPreview();
+}
+
+async function setQuickBaseUrl(url) {
+  const input = document.getElementById('cfg-app-base-url');
+  if (input) input.value = url;
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appBaseUrl: url }),
+    });
+    if (res.ok) {
+      showToast(`Base URL updated to: ${url}`, 'success');
+      await fetchConfig();
+      updateSimulatorPreview();
+    }
+  } catch (e) {
+    showToast('Failed to update URL: ' + e.message, 'error');
   }
 }
 
@@ -635,6 +695,11 @@ async function fetchTemplates() {
       templates = await res.json();
       const tplWa = document.getElementById('tpl-whatsapp-input');
       if (tplWa) tplWa.value = templates.whatsapp || '';
+
+      const composerMsg = document.getElementById('composer-message');
+      if (composerMsg && !composerMsg.value.trim()) {
+        composerMsg.value = templates.whatsapp || getDefaultWhatsAppCopy();
+      }
 
       const tplMail = document.getElementById('tpl-email-input');
       if (tplMail) tplMail.value = templates.email || '';
@@ -1022,7 +1087,10 @@ function updateSimulatorPreview(lastSentRecord = null) {
   const phone = lastSentRecord?.phone || getFullComposerPhone() || '';
   const cleanDigits = phone.replace(/[^0-9]/g, '');
 
-  const baseUrl = window.location.origin;
+  const customerName = lastSentRecord?.customerName || nameInput || 'Valued Customer';
+  const bizName = serverConfig.businessName || 'zerix';
+
+  const baseUrl = serverConfig.appBaseUrl || serverConfig.effectiveBaseUrl || window.location.origin;
   const reqId = lastSentRecord?.id || 'demo';
 
   const star5 = `${baseUrl}/r/${reqId}?stars=5`;
@@ -1030,6 +1098,38 @@ function updateSimulatorPreview(lastSentRecord = null) {
   const star3 = `${baseUrl}/r/${reqId}?stars=3`;
   const star2 = `${baseUrl}/r/${reqId}?stars=2`;
   const star1 = `${baseUrl}/r/${reqId}?stars=1`;
+  const reviewUrl = serverConfig.reviewUrl || star5;
+
+  // Update Base URL display in composer
+  const baseDisplay = document.getElementById('composer-base-url-display');
+  if (baseDisplay) baseDisplay.textContent = baseUrl;
+
+  const baseCard = document.getElementById('composer-base-url-card');
+  if (baseCard) {
+    if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+      baseCard.className = 'p-2 bg-amber-50 rounded-lg border border-amber-300 flex items-center justify-between text-[11px] text-amber-900';
+    } else {
+      baseCard.className = 'p-2 bg-white rounded-lg border border-[#e9edef] flex items-center justify-between text-[11px] text-[#54656f]';
+    }
+  }
+
+  // Get raw custom message or default template
+  const msgInput = document.getElementById('composer-message');
+  let rawText = (msgInput && msgInput.value.trim())
+    ? msgInput.value
+    : (templates.whatsapp || getDefaultWhatsAppCopy());
+
+  // Replace placeholders dynamically
+  const renderedMessage = rawText
+    .replace(/\{\{customerName\}\}/g, customerName)
+    .replace(/\{\{businessName\}\}/g, bizName)
+    .replace(/\{\{star5Url\}\}/g, star5)
+    .replace(/\{\{star4Url\}\}/g, star4)
+    .replace(/\{\{star3Url\}\}/g, star3)
+    .replace(/\{\{star2Url\}\}/g, star2)
+    .replace(/\{\{star1Url\}\}/g, star1)
+    .replace(/\{\{funnelUrl\}\}/g, `${baseUrl}/r/${reqId}`)
+    .replace(/\{\{reviewUrl\}\}/g, reviewUrl);
 
   const simGreeting = document.getElementById('sim-bubble-greeting');
   if (simGreeting) {
@@ -1038,7 +1138,11 @@ function updateSimulatorPreview(lastSentRecord = null) {
 
   const simBody = document.getElementById('sim-bubble-body');
   if (simBody) {
-    simBody.innerHTML = `Thank you for choosing <strong class="capitalize">${escapeHtml(bizName)}</strong>! How was your experience today? Tap your rating below:`;
+    let formattedHtml = escapeHtml(renderedMessage)
+      .replace(/\n/g, '<br/>')
+      .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" class="text-[#008069] underline font-mono break-all">$1</a>')
+      .replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
+    simBody.innerHTML = formattedHtml;
   }
 
   const simStarsContainer = document.getElementById('sim-bubble-stars-container');
@@ -1106,8 +1210,7 @@ function updateSimulatorPreview(lastSentRecord = null) {
   const wameDisplay = document.getElementById('composer-wame-text');
   if (wameDisplay) {
     if (phone) {
-      const waText = `Hi ${customerName}! 👋\n\nThank you for choosing ${bizName}! How was your experience today? Tap your rating below:\n\n⭐⭐⭐⭐⭐ Excellent (5/5)\n👉 ${star5}\n\n⭐⭐⭐⭐ Good (4/5)\n👉 ${star4}\n\n⭐⭐⭐ Average (3/5)\n👉 ${star3}\n\n⭐ Had an issue (1/5)\n👉 ${star1}\n\nThank you!\n— ${bizName} Team`;
-      wameDisplay.textContent = `wa.me/${cleanDigits}?text=${encodeURIComponent(waText)}`;
+      wameDisplay.textContent = `wa.me/${cleanDigits}?text=${encodeURIComponent(renderedMessage)}`;
     } else {
       wameDisplay.textContent = 'Enter customer phone to generate link';
     }
@@ -1164,6 +1267,9 @@ async function submitDispatchForm() {
   const forceSend = forceCheckbox?.checked || false;
 
   try {
+    const customMessage = document.getElementById('composer-message')?.value?.trim();
+    const appBaseUrl = serverConfig.appBaseUrl || serverConfig.effectiveBaseUrl || undefined;
+
     // Attempt backend dispatch
     res = await fetch('/api/request', {
       method: 'POST',
@@ -1175,6 +1281,8 @@ async function submitDispatchForm() {
         channel: currentChannel,
         jobReference,
         force: forceSend,
+        customMessage: customMessage || undefined,
+        appBaseUrl,
       }),
       signal: AbortSignal.timeout(15000),
     });
@@ -1598,6 +1706,7 @@ async function handleConfigSubmit(e) {
   e.preventDefault();
   const businessName = document.getElementById('cfg-biz-name')?.value.trim();
   const reviewUrl = document.getElementById('cfg-review-url')?.value.trim();
+  const appBaseUrl = document.getElementById('cfg-app-base-url')?.value.trim();
   const followUpDays = parseInt(document.getElementById('cfg-followup-days')?.value, 10) || 3;
   const managerPhone = document.getElementById('cfg-manager-phone')?.value.trim();
 
@@ -1608,6 +1717,7 @@ async function handleConfigSubmit(e) {
       body: JSON.stringify({
         businessName,
         reviewUrl,
+        appBaseUrl,
         followUpDays,
         managerPhone,
       }),

@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 // Global safety handlers to prevent server crashes on transient network glitches
 process.on('uncaughtException', (err) => {
@@ -124,12 +125,50 @@ function getPort() {
   return process.env.PORT || 3000;
 }
 
+function getLanIpAddress() {
+  try {
+    const ifaces = os.networkInterfaces();
+    // Prefer Wi-Fi or physical Ethernet interfaces
+    for (const name in ifaces) {
+      if (/virtual|vethernet|loopback|docker|bluetooth|wsl/i.test(name)) continue;
+      for (const net of ifaces[name]) {
+        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254')) {
+          return net.address;
+        }
+      }
+    }
+    // Fallback to any valid non-internal IPv4
+    for (const name in ifaces) {
+      for (const net of ifaces[name]) {
+        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254')) {
+          return net.address;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error detecting LAN IP:', e.message);
+  }
+  return null;
+}
+
 function getAppBaseUrl(req) {
-  if (process.env.APP_BASE_URL) return normalizeUrl(process.env.APP_BASE_URL);
-  if (process.env.RENDER_EXTERNAL_URL) return normalizeUrl(process.env.RENDER_EXTERNAL_URL);
+  if (process.env.APP_BASE_URL && process.env.APP_BASE_URL.trim()) {
+    return normalizeUrl(process.env.APP_BASE_URL.trim());
+  }
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return normalizeUrl(process.env.RENDER_EXTERNAL_URL);
+  }
   if (req && req.get && req.get('host')) {
-    const proto = req.get('x-forwarded-proto') || req.protocol || 'http';
-    return `${proto}://${req.get('host')}`;
+    const host = req.get('host');
+    if (!host.startsWith('localhost') && !host.startsWith('127.0.0.1')) {
+      const proto = req.get('x-forwarded-proto') || req.protocol || 'http';
+      return `${proto}://${host}`;
+    }
+  }
+  // Mobile devices receiving WhatsApp messages cannot open localhost — default to Wi-Fi/LAN IP
+  const lanIp = getLanIpAddress();
+  if (lanIp) {
+    return `http://${lanIp}:${getPort()}`;
   }
   return `http://localhost:${getPort()}`;
 }
@@ -361,7 +400,18 @@ async function sendWhatsAppMessage(phone, message) {
 
 
 // Helper to process and dispatch a single review request
-async function processReviewRequest({ customerName, email, phone, channel, jobReference, force = false, queueOnly = false }) {
+async function processReviewRequest({
+  customerName,
+  email,
+  phone,
+  channel,
+  jobReference,
+  force = false,
+  queueOnly = false,
+  customMessage = null,
+  appBaseUrl = null,
+  req = null,
+}) {
   if (!customerName || (!email && !phone)) {
     throw new Error('Customer name and either email or phone are required');
   }
@@ -401,7 +451,7 @@ async function processReviewRequest({ customerName, email, phone, channel, jobRe
   }
 
   const id = crypto.randomUUID();
-  const baseUrl = getAppBaseUrl();
+  const baseUrl = (appBaseUrl && appBaseUrl.trim()) ? normalizeUrl(appBaseUrl.trim()) : getAppBaseUrl(req);
   const funnelUrl = `${baseUrl}/r/${id}`;
   const star5Url = `${baseUrl}/r/${id}?stars=5`;
   const star4Url = `${baseUrl}/r/${id}?stars=4`;
@@ -423,9 +473,13 @@ async function processReviewRequest({ customerName, email, phone, channel, jobRe
     jobReference: jobReference || '',
   };
 
+  const activeWaTemplate = (customMessage && customMessage.trim())
+    ? customMessage.trim()
+    : (loadTemplate('whatsapp-template.md') || 'Hi {{customerName}}! Rate us: {{star5Url}}');
+
   let whatsappLink = null;
   if (cleanPhone) {
-    const waText = fillTemplate(loadTemplate('whatsapp-template.md') || 'Hi {{customerName}}! Rate us: {{star5Url}}', vars);
+    const waText = fillTemplate(activeWaTemplate, vars);
     const targetDigits = cleanPhone.replace(/^\+/, '');
     whatsappLink = `https://wa.me/${targetDigits}?text=${encodeURIComponent(waText)}`;
   }
@@ -445,6 +499,8 @@ async function processReviewRequest({ customerName, email, phone, channel, jobRe
     funnelUrl,
     star5Url,
     star1Url,
+    baseUrl,
+    customMessage: (customMessage && customMessage.trim()) ? customMessage.trim() : null,
   };
 
   if (queueOnly) {
@@ -464,8 +520,7 @@ async function processReviewRequest({ customerName, email, phone, channel, jobRe
       });
       record.status = 'sent';
     } else if (record.channel === 'whatsapp' && cleanPhone) {
-      const waTemplate = loadTemplate('whatsapp-template.md') || 'Hi {{customerName}}! Please leave us a review: {{reviewUrl}}';
-      const msg = fillTemplate(waTemplate, vars);
+      const msg = fillTemplate(activeWaTemplate, vars);
       const result = await sendWhatsAppMessage(cleanPhone, msg);
       record.status = 'sent';
       record.provider = result.provider;
@@ -491,7 +546,7 @@ async function processReviewRequest({ customerName, email, phone, channel, jobRe
 
 // Send single review request
 app.post('/api/request', async (req, res) => {
-  const { customerName, email, phone, channel, jobReference, force } = req.body;
+  const { customerName, email, phone, channel, jobReference, force, customMessage, appBaseUrl } = req.body;
 
   if (!customerName || (!email && !phone)) {
     return res.status(400).json({ error: 'customerName and either email or phone are required' });
@@ -505,6 +560,9 @@ app.post('/api/request', async (req, res) => {
       channel,
       jobReference,
       force: !!force,
+      customMessage,
+      appBaseUrl,
+      req,
     });
 
     if (result.skipped) {
@@ -520,7 +578,7 @@ app.post('/api/request', async (req, res) => {
 
 // Bulk import & send review requests
 app.post('/api/requests/bulk', async (req, res) => {
-  const { contacts, defaultChannel, force, queueOnly, delayMs = 80 } = req.body;
+  const { contacts, defaultChannel, force, queueOnly, delayMs = 80, customMessage, appBaseUrl } = req.body;
 
   if (!Array.isArray(contacts) || contacts.length === 0) {
     return res.status(400).json({ error: 'An array of contacts is required' });
@@ -567,6 +625,9 @@ app.post('/api/requests/bulk', async (req, res) => {
         jobReference,
         force: !!force,
         queueOnly: !!queueOnly,
+        customMessage: c.customMessage || customMessage,
+        appBaseUrl,
+        req,
       });
 
       if (record.skipped) {
@@ -1038,6 +1099,9 @@ app.get('/api/config', (req, res) => {
     port: getPort(),
     businessName: getBusinessName(),
     reviewUrl: getReviewUrl(),
+    appBaseUrl: process.env.APP_BASE_URL || '',
+    detectedLanIp: getLanIpAddress() ? `http://${getLanIpAddress()}:${getPort()}` : '',
+    effectiveBaseUrl: getAppBaseUrl(req),
     followUpDays: getFollowUpDays(),
     smtpConfigured: !!transporter,
     smtpHost: process.env.SMTP_HOST || '',
@@ -1068,6 +1132,7 @@ const handleConfigUpdate = (req, res) => {
   const {
     businessName,
     reviewUrl,
+    appBaseUrl,
     followUpDays,
     port,
     managerPhone,
@@ -1096,6 +1161,10 @@ const handleConfigUpdate = (req, res) => {
   if (reviewUrl !== undefined) {
     process.env.GOOGLE_REVIEW_URL = reviewUrl;
     envUpdates.GOOGLE_REVIEW_URL = reviewUrl;
+  }
+  if (appBaseUrl !== undefined) {
+    process.env.APP_BASE_URL = appBaseUrl.trim();
+    envUpdates.APP_BASE_URL = appBaseUrl.trim();
   }
   if (managerPhone !== undefined) {
     process.env.MANAGER_WHATSAPP_PHONE = managerPhone;
