@@ -647,6 +647,20 @@ function getDefaultWhatsAppCopy() {
   return `Hi {{customerName}}! 👋\n\nThank you for choosing {{businessName}}! How was your experience today? Tap your rating below:\n\n⭐⭐⭐⭐⭐ Excellent (5/5)\n👉 {{star5Url}}\n\n⭐⭐⭐⭐ Good (4/5)\n👉 {{star4Url}}\n\n⭐⭐⭐ Okay / Fair (3/5)\n👉 {{star3Url}}\n\n⭐⭐ Poor (2/5)\n👉 {{star2Url}}\n\n⭐ Very Poor (1/5)\n👉 {{star1Url}}\n\nThank you!\n— {{businessName}} Team`;
 }
 
+function applyMessagePreset(mode) {
+  const composerMsg = document.getElementById('composer-message');
+  if (!composerMsg) return;
+
+  if (mode === 'direct') {
+    composerMsg.value = `Hi {{customerName}}! 👋\n\nThank you for choosing {{businessName}}! How was your experience with us today?\n\n⭐⭐⭐⭐⭐ Excellent / Great (5/5)\n👉 {{googleReviewUrl}}\n\n💬 Had any issue or need support?\n👉 {{managerChatUrl}}\n\nThank you!\n— {{businessName}} Team`;
+    showToast('Applied Direct Mode: Works for any mobile phone with zero hosting needed!', 'success');
+  } else {
+    composerMsg.value = getDefaultWhatsAppCopy();
+    showToast('Applied Web Funnel (5 Rating Links) preset', 'info');
+  }
+  updateSimulatorPreview();
+}
+
 function resetComposerMessage() {
   const composerMsg = document.getElementById('composer-message');
   if (composerMsg) {
@@ -1119,17 +1133,25 @@ function updateSimulatorPreview(lastSentRecord = null) {
     ? msgInput.value
     : (templates.whatsapp || getDefaultWhatsAppCopy());
 
+  const cleanMgrDigits = (serverConfig.managerPhone || '').replace(/[^0-9]/g, '');
+  const managerChatUrl = cleanMgrDigits
+    ? `https://wa.me/${cleanMgrDigits}?text=${encodeURIComponent(`Hi ${bizName}, I would like to share feedback regarding my recent experience.`)}`
+    : star1;
+  const googleReviewUrl = serverConfig.reviewUrl || star5;
+
   // Replace placeholders dynamically
   const renderedMessage = rawText
     .replace(/\{\{customerName\}\}/g, customerName)
     .replace(/\{\{businessName\}\}/g, bizName)
+    .replace(/\{\{googleReviewUrl\}\}/g, googleReviewUrl)
+    .replace(/\{\{managerChatUrl\}\}/g, managerChatUrl)
     .replace(/\{\{star5Url\}\}/g, star5)
     .replace(/\{\{star4Url\}\}/g, star4)
     .replace(/\{\{star3Url\}\}/g, star3)
     .replace(/\{\{star2Url\}\}/g, star2)
     .replace(/\{\{star1Url\}\}/g, star1)
     .replace(/\{\{funnelUrl\}\}/g, `${baseUrl}/r/${reqId}`)
-    .replace(/\{\{reviewUrl\}\}/g, reviewUrl);
+    .replace(/\{\{reviewUrl\}\}/g, googleReviewUrl);
 
   const simGreeting = document.getElementById('sim-bubble-greeting');
   if (simGreeting) {

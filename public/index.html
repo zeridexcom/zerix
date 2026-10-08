@@ -643,6 +643,17 @@
                   Customize the exact message sent to this customer. Click tags below to insert dynamic placeholders:
                 </p>
 
+                <!-- Preset Switcher -->
+                <div class="flex items-center gap-1.5 pb-1">
+                  <span class="text-[10px] text-[#667781] font-semibold">Quick Presets:</span>
+                  <button type="button" onclick="applyMessagePreset('direct')" class="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold hover:bg-emerald-100 transition shadow-2xs flex items-center gap-1">
+                    <span class="material-symbols-outlined text-[13px] text-[#008069]">verified</span> Direct Mode (No Hosting Needed)
+                  </button>
+                  <button type="button" onclick="applyMessagePreset('funnel')" class="px-2 py-0.5 rounded-md bg-white text-[#111b21] border border-[#e9edef] text-[10px] font-semibold hover:bg-slate-50 transition shadow-2xs flex items-center gap-1">
+                    <span class="material-symbols-outlined text-[13px] text-amber-500">star</span> Web Funnel (5 Rating Links)
+                  </button>
+                </div>
+
                 <!-- Variable Pills / Tags -->
                 <div class="flex flex-wrap gap-1.5 pt-0.5">
                   <button type="button" onclick="insertComposerTag('{{customerName}}')" class="px-2 py-0.5 rounded-md bg-white border border-[#e9edef] text-[10px] font-mono text-[#008069] font-bold hover:bg-emerald-50 transition shadow-2xs">
@@ -651,20 +662,20 @@
                   <button type="button" onclick="insertComposerTag('{{businessName}}')" class="px-2 py-0.5 rounded-md bg-white border border-[#e9edef] text-[10px] font-mono text-[#008069] font-bold hover:bg-emerald-50 transition shadow-2xs">
                     + {{businessName}}
                   </button>
+                  <button type="button" onclick="insertComposerTag('{{googleReviewUrl}}')" class="px-2 py-0.5 rounded-md bg-emerald-100 border border-emerald-400 text-[10px] font-mono text-emerald-900 font-bold hover:bg-emerald-200 transition shadow-2xs" title="Direct Google Review link (Always works on any phone)">
+                    + {{googleReviewUrl}} (Google Direct)
+                  </button>
+                  <button type="button" onclick="insertComposerTag('{{managerChatUrl}}')" class="px-2 py-0.5 rounded-md bg-rose-100 border border-rose-300 text-[10px] font-mono text-rose-900 font-bold hover:bg-rose-200 transition shadow-2xs" title="Direct WhatsApp Manager chat link (Always works on any phone)">
+                    + {{managerChatUrl}} (Manager WhatsApp)
+                  </button>
                   <button type="button" onclick="insertComposerTag('{{star5Url}}')" class="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-300 text-[10px] font-mono text-emerald-800 font-bold hover:bg-emerald-100 transition shadow-2xs">
                     + {{star5Url}}
                   </button>
                   <button type="button" onclick="insertComposerTag('{{star4Url}}')" class="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-300 text-[10px] font-mono text-emerald-800 font-bold hover:bg-emerald-100 transition shadow-2xs">
                     + {{star4Url}}
                   </button>
-                  <button type="button" onclick="insertComposerTag('{{star3Url}}')" class="px-2 py-0.5 rounded-md bg-amber-50 border border-amber-300 text-[10px] font-mono text-amber-800 font-bold hover:bg-amber-100 transition shadow-2xs">
-                    + {{star3Url}}
-                  </button>
-                  <button type="button" onclick="insertComposerTag('{{star1Url}}')" class="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-300 text-[10px] font-mono text-rose-800 font-bold hover:bg-rose-100 transition shadow-2xs">
+                  <button type="button" onclick="insertComposerTag('{{star1Url}}')" class="px-2 py-0.5 rounded-md bg-amber-50 border border-amber-300 text-[10px] font-mono text-amber-800 font-bold hover:bg-amber-100 transition shadow-2xs">
                     + {{star1Url}}
-                  </button>
-                  <button type="button" onclick="insertComposerTag('{{reviewUrl}}')" class="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-[10px] font-mono text-blue-700 font-bold hover:bg-blue-100 transition shadow-2xs">
-                    + {{reviewUrl}}
                   </button>
                 </div>
 

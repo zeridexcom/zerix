@@ -459,9 +459,16 @@ async function processReviewRequest({
   const star2Url = `${baseUrl}/r/${id}?stars=2`;
   const star1Url = `${baseUrl}/r/${id}?stars=1`;
 
+  const mgrPhone = process.env.MANAGER_WHATSAPP_PHONE || process.env.ADMIN_WHATSAPP_PHONE || '';
+  const cleanMgrDigits = mgrPhone.replace(/[^0-9]/g, '');
+  const managerChatUrl = cleanMgrDigits
+    ? `https://wa.me/${cleanMgrDigits}?text=${encodeURIComponent(`Hi ${businessName}, I would like to share feedback regarding my recent experience.`)}`
+    : star1Url;
+
   const vars = {
     customerName,
     reviewUrl,
+    googleReviewUrl: reviewUrl,
     businessName,
     funnelUrl,
     star5Url,
@@ -469,6 +476,7 @@ async function processReviewRequest({
     star3Url,
     star2Url,
     star1Url,
+    managerChatUrl,
     requestId: id,
     jobReference: jobReference || '',
   };
